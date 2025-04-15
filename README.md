@@ -2,6 +2,8 @@
 
 A Streamlit-based web application for managing student attendance in an educational institution.
 
+#Still in working phase 
+
 ## Features
 
 - Mark attendance for different departments, subjects, and semesters
