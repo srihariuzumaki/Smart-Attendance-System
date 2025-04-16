@@ -3,6 +3,187 @@ import pandas as pd
 from datetime import date
 import io
 
+# Initialize theme state
+if 'theme' not in st.session_state:
+    st.session_state.theme = 'light'
+
+# Custom CSS for the theme toggle button
+st.markdown("""
+<style>
+    .theme-toggle {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+    }
+    .theme-toggle button {
+        border-radius: 50% !important;
+        width: 40px !important;
+        height: 40px !important;
+        padding: 0px !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Create a container for the theme toggle
+toggle_col = st.container()
+with toggle_col:
+    # Use columns to position the button on the right
+    _, right_col = st.columns([6, 1])
+    with right_col:
+        theme_icon = "🌑" if st.session_state.theme == 'light' else "☀️"
+        if st.button(theme_icon, key="theme_toggle"):
+            st.session_state.theme = 'dark' if st.session_state.theme == 'light' else 'light'
+            st.rerun()
+
+# Custom CSS for background and styling based on theme
+dark_theme = """
+<style>
+    .stApp {
+        background: linear-gradient(to bottom, rgba(14, 17, 23, 0.95), rgba(14, 17, 23, 0.95)),
+                    url("https://transparenttextures.com/patterns/notebook-dark.png");
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: rgba(25, 30, 40, 0.95);
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        color: #FAFAFA;
+        font-weight: 500;
+    }
+    
+    div[data-testid="stForm"] {
+        background-color: rgba(25, 30, 40, 0.95);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    
+    div.stButton > button {
+        background-color: #FF4B4B;
+        color: white;
+        font-weight: bold;
+    }
+    
+    div.stButton > button:hover {
+        background-color: #FF3333;
+    }
+    
+    .stCheckbox {
+        background-color: rgba(25, 30, 40, 0.95);
+        padding: 5px 10px;
+        border-radius: 5px;
+        margin: 2px 0;
+        color: #FAFAFA;
+    }
+    
+    div[data-testid="stMarkdownContainer"] {
+        color: #FAFAFA;
+    }
+    
+    div[data-baseweb="select"] {
+        background-color: rgba(25, 30, 40, 0.95);
+        border-radius: 5px;
+        color: #FAFAFA;
+    }
+    
+    .stDateInput {
+        background-color: rgba(25, 30, 40, 0.95);
+        border-radius: 5px;
+        color: #FAFAFA;
+    }
+    
+    div[data-testid="stFileUploader"] {
+        background-color: rgba(25, 30, 40, 0.95);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        color: #FAFAFA;
+    }
+    
+    .stAlert {
+        background-color: rgba(25, 30, 40, 0.95);
+        color: #FAFAFA;
+    }
+</style>
+"""
+
+light_theme = """
+<style>
+    .stApp {
+        background: linear-gradient(to bottom, rgba(240, 242, 246, 0.95), rgba(240, 242, 246, 0.95)),
+                    url("https://transparenttextures.com/patterns/notebook-dark.png");
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: rgba(255, 255, 255, 0.95);
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        color: #0E1117;
+        font-weight: 500;
+    }
+    
+    div[data-testid="stForm"] {
+        background-color: rgba(255, 255, 255, 0.95);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    div.stButton > button {
+        background-color: #FF4B4B;
+        color: white;
+        font-weight: bold;
+    }
+    
+    div.stButton > button:hover {
+        background-color: #FF3333;
+    }
+    
+    .stCheckbox {
+        background-color: rgba(255, 255, 255, 0.95);
+        padding: 5px 10px;
+        border-radius: 5px;
+        margin: 2px 0;
+    }
+    
+    div[data-testid="stMarkdownContainer"] {
+        color: #0E1117;
+    }
+    
+    div[data-baseweb="select"] {
+        background-color: rgba(255, 255, 255, 0.95);
+        border-radius: 5px;
+    }
+    
+    .stDateInput {
+        background-color: rgba(255, 255, 255, 0.95);
+        border-radius: 5px;
+    }
+    
+    div[data-testid="stFileUploader"] {
+        background-color: rgba(255, 255, 255, 0.95);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+</style>
+"""
+
+# Apply the appropriate theme
+st.markdown(dark_theme if st.session_state.theme == 'dark' else light_theme, unsafe_allow_html=True)
+
 # Define subjects for each department
 DEPARTMENT_SUBJECTS = {
     'CSE': ['Python Programming', 'Data Structures', 'Database Management', 'Computer Networks', 'Operating Systems'],
