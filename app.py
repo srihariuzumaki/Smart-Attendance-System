@@ -7,29 +7,242 @@ import io
 if 'theme' not in st.session_state:
     st.session_state.theme = 'light'
 
-# Custom CSS for the theme toggle button
+# Custom CSS for animations and micro-interactions
 st.markdown("""
 <style>
+    /* Dark theme specific text colors */
+    [data-theme="dark"] {
+        color: white !important;
+    }
+    
+    [data-theme="dark"] [data-testid="stFileUploader"] {
+        color: white !important;
+    }
+    
+    [data-theme="dark"] [data-testid="stFileUploader"] label {
+        color: white !important;
+    }
+    
+    [data-theme="dark"] [data-testid="stFileUploader"] small {
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+    
+    [data-theme="dark"] [data-testid="stFileUploader"] svg {
+        fill: white !important;
+    }
+    
+    [data-theme="dark"] .uploadedFileName {
+        color: white !important;
+    }
+    
+    /* File uploader text colors in dark theme */
+    .stApp.dark [data-testid="stFileUploader"] {
+        color: white !important;
+    }
+    
+    .stApp.dark [data-testid="stFileUploader"] p {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    .stApp.dark [data-testid="stFileUploader"] small {
+        color: rgba(255, 255, 255, 0.7) !important;
+    }
+    
+    .stApp.dark [data-testid="stFileUploader"] svg {
+        fill: white !important;
+    }
+    
+    .stApp.dark [data-testid="stFileUploader"] button {
+        color: white !important;
+        border-color: rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    .stApp.dark [data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    .stApp.dark .drag-and-drop-text {
+        color: white !important;
+    }
+    
+    /* Animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    
+    @keyframes slideIn {
+        from { transform: translateX(-10px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    /* Apply animations to elements */
+    .stButton button {
+        transition: all 0.3s ease !important;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .stButton button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    .stButton button:active {
+        transform: translateY(0px) !important;
+    }
+    
+    /* Theme toggle button specific styles */
     .theme-toggle {
         position: fixed;
         top: 20px;
         right: 20px;
         z-index: 1000;
     }
+    
     .theme-toggle button {
         border-radius: 50% !important;
         width: 40px !important;
         height: 40px !important;
         padding: 0px !important;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+        transition: all 0.3s ease !important;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .theme-toggle button:hover {
+        transform: rotate(180deg) !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+    }
+    
+    /* File uploader animations */
+    [data-testid="stFileUploader"] {
+        transition: all 0.3s ease;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    [data-testid="stFileUploader"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Checkbox animations */
+    .stCheckbox {
+        transition: all 0.2s ease;
+        animation: slideIn 0.3s ease-out;
+    }
+    
+    .stCheckbox:hover {
+        transform: translateX(2px);
+    }
+    
+    /* Select box animations */
+    div[data-baseweb="select"] {
+        transition: all 0.3s ease;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    div[data-baseweb="select"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Success message animation */
+    div[data-testid="stAlert"] {
+        animation: pulse 0.5s ease-out;
+    }
+    
+    /* Table animations */
+    div[data-testid="stTable"] {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Tab animations */
+    .stTabs [data-baseweb="tab-list"] {
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        transition: all 0.2s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        transform: translateY(-2px);
+    }
+    
+    /* Loading spinner animation */
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .stSpinner {
+        animation: spin 1s linear infinite;
+    }
+    
+    /* Main content fade in */
+    .main .block-container {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Ensure uploaded file is visible in both themes */
+    [data-testid="stFileUploader"] {
+        background: transparent !important;
+    }
+    
+    /* Light theme - force black text for uploaded file */
+    .stApp.light [data-testid="stFileUploader"] p {
+        color: black !important;
+    }
+    
+    .stApp.light [data-testid="stFileUploader"] span {
+        color: black !important;
+    }
+    
+    .stApp.light [data-testid="stFileUploader"] div {
+        color: black !important;
+    }
+    
+    .stApp.light [data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] {
+        color: black !important;
+    }
+    
+    .stApp.light .uploadedFileName {
+        color: #000000 !important;
+    }
+    
+    /* Dark theme specific text colors */
+    .stApp.dark [data-testid="stMarkdownContainer"] {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    .stApp.dark .uploadedFileName {
+        color: white !important;
+    }
+    
+    .stApp.dark [data-testid="stFileUploader"] p,
+    .stApp.dark [data-testid="stFileUploader"] span,
+    .stApp.dark [data-testid="stFileUploader"] div,
+    .stApp.dark [data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] {
+        color: white !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
+# Apply theme to body
+st.markdown(f"""
+    <script>
+        document.body.setAttribute('data-theme', '{st.session_state.theme}');
+    </script>
+    """, unsafe_allow_html=True)
+
 # Create a container for the theme toggle
 toggle_col = st.container()
 with toggle_col:
-    # Use columns to position the button on the right
     _, right_col = st.columns([6, 1])
     with right_col:
         theme_icon = "🌑" if st.session_state.theme == 'light' else "☀️"
