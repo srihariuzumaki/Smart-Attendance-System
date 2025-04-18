@@ -1,73 +1,91 @@
-# Welcome to your Lovable project
+# Attendify Dashboard UI
 
-## Project info
+A modern, responsive dashboard interface for the Smart Attendance System that provides real-time attendance tracking, analytics, and management capabilities.
 
-**URL**: https://lovable.dev/projects/e9fc9d4a-0478-4033-a256-3c2840babb42
+## Features
 
-## How can I edit this code?
+- **Real-time Dashboard**: View live attendance statistics and analytics
+- **Student Management**: Add, edit, and manage student profiles
+- **Attendance Tracking**: Monitor attendance records with detailed insights
+- **Course Management**: Manage courses, schedules, and attendance rules
+- **Analytics & Reports**: Generate detailed attendance reports and visualizations
+- **Responsive Design**: Fully responsive interface that works on all devices
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- **Frontend Framework**: React with TypeScript
+- **Styling**: Tailwind CSS with shadcn-ui components
+- **Build Tool**: Vite
+- **State Management**: React Context/Hooks
+- **Charts & Visualizations**: Recharts/Chart.js
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/e9fc9d4a-0478-4033-a256-3c2840babb42) and start prompting.
+## Getting Started
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js (v16 or higher)
+- npm or yarn package manager
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Installation
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+1. Clone the repository:
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```bash
+git clone <repository-url>
+cd attendify-dashboard-ui
 ```
 
-**Edit a file directly in GitHub**
+2. Install dependencies:
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+npm install
+# or
+yarn install
+```
 
-**Use GitHub Codespaces**
+3. Start the development server:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+npm run dev
+# or
+yarn dev
+```
 
-## What technologies are used for this project?
+The application will be available at `http://localhost:5173`
 
-This project is built with:
+## Project Structure
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```
+attendify-dashboard-ui/
+├── src/
+│   ├── components/     # Reusable UI components
+│   ├── pages/         # Page components
+│   ├── layouts/       # Layout components
+│   ├── hooks/         # Custom React hooks
+│   ├── services/      # API services
+│   ├── utils/         # Utility functions
+│   ├── types/         # TypeScript type definitions
+│   └── styles/        # Global styles and Tailwind config
+├── public/            # Static assets
+└── ...config files
+```
 
-## How can I deploy this project?
+## Available Scripts
 
-Simply open [Lovable](https://lovable.dev/projects/e9fc9d4a-0478-4033-a256-3c2840babb42) and click on Share -> Publish.
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+- `npm run type-check` - Run TypeScript type checking
 
-## Can I connect a custom domain to my Lovable project?
+## Contributing
 
-Yes, you can!
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## License
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+This project is licensed under the MIT License - see the LICENSE file for details.
