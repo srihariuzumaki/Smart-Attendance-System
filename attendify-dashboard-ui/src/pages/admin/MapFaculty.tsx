@@ -464,3 +464,5 @@ const MapFaculty = () => {
 };
 
 export default MapFaculty;
+
+export { AddFacultyDialog };
