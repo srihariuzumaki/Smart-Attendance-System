@@ -10,7 +10,6 @@ import MainLayout from "./components/layout/MainLayout";
 // Admin Pages
 import AdminDashboard from "./pages/admin/Dashboard";
 import MapFaculty from "./pages/admin/MapFaculty";
-import ManageFaculty from "./pages/admin/ManageFaculty";
 import ManageStudents from "./pages/admin/ManageStudents";
 import ViewReports from "./pages/admin/ViewReports";
 
@@ -44,7 +43,6 @@ const App = () => (
           <Route path="/admin" element={<MainLayout role="admin" />}>
             <Route index element={<AdminDashboard />} />
             <Route path="map-faculty" element={<MapFaculty />} />
-            <Route path="manage-faculty" element={<ManageFaculty />} />
             <Route path="manage-students" element={<ManageStudents />} />
             <Route path="view-reports" element={<ViewReports />} />
           </Route>

@@ -1,7 +1,6 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Lock, User, Calendar } from "lucide-react";
+import { Eye, EyeOff, Lock, User, Calendar, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,31 +22,67 @@ const LoginForm = () => {
   const [password, setPassword] = useState("");
   const [usn, setUsn] = useState("");
   const [date, setDate] = useState<Date | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
-    // In a real app, you'd perform actual authentication here
-    
-    // For demo purposes, simply redirect based on user type
-    if (userType === "admin") {
-      navigate("/admin");
+    try {
+      if (userType === "admin") {
+        // For demo purposes, simply redirect
+        navigate("/admin");
+        toast({
+          title: "Login Successful",
+          description: "Welcome to the admin dashboard",
+        });
+      } else if (userType === "faculty") {
+        // Authenticate faculty with ID and password
+        const response = await fetch('http://localhost:5000/api/auth/faculty', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            faculty_id: username,
+            password: password,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to login');
+        }
+
+        const data = await response.json();
+        
+        // Store faculty info in localStorage for future use
+        localStorage.setItem('faculty', JSON.stringify(data.faculty));
+        
+        // Clear sensitive data
+        setPassword("");
+        
+        navigate("/faculty");
+        toast({
+          title: "Login Successful",
+          description: `Welcome back, ${data.faculty.name}`,
+        });
+      } else {
+        // For demo purposes, simply redirect
+        navigate("/student");
+        toast({
+          title: "Login Successful",
+          description: "Welcome to the student dashboard",
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Login Successful",
-        description: "Welcome to the admin dashboard",
+        title: "Login Failed",
+        description: error instanceof Error ? error.message : "Invalid credentials",
+        variant: "destructive",
       });
-    } else if (userType === "faculty") {
-      navigate("/faculty");
-      toast({
-        title: "Login Successful",
-        description: "Welcome to the faculty dashboard",
-      });
-    } else {
-      navigate("/student");
-      toast({
-        title: "Login Successful",
-        description: "Welcome to the student dashboard",
-      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -126,12 +161,12 @@ const LoginForm = () => {
                   
                   <TabsContent value="faculty" className="space-y-4 mt-0">
                     <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
+                      <Label htmlFor="username">Faculty ID</Label>
                       <div className="relative">
                         <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input 
                           id="username" 
-                          placeholder="Enter your username" 
+                          placeholder="Enter your faculty ID" 
                           className="pl-10" 
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
@@ -222,11 +257,15 @@ const LoginForm = () => {
                 </CardContent>
                 
                 <CardFooter>
-                  <Button 
-                    type="submit" 
-                    className="w-full transition-all duration-300 hover:scale-[1.02]"
-                  >
-                    Login
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Logging in...
+                      </>
+                    ) : (
+                      "Login"
+                    )}
                   </Button>
                 </CardFooter>
               </form>

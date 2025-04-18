@@ -6,6 +6,7 @@ import io
 import os
 import sqlite3
 from contextlib import contextmanager
+import hashlib
 
 app = Flask(__name__)
 CORS(app)
@@ -35,7 +36,7 @@ def init_db():
             )
         ''')
         
-        # Create faculty table
+        # Create faculty table with password field
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS faculty (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +45,8 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 department TEXT NOT NULL,
                 designation TEXT NOT NULL,
-                joining_date TEXT NOT NULL
+                joining_date TEXT NOT NULL,
+                password_hash TEXT NOT NULL
             )
         ''')
         
@@ -440,19 +442,22 @@ def manage_faculty():
         if not data:
             return jsonify({'error': 'No data provided'}), 400
 
-        required_fields = ['faculty_id', 'name', 'email', 'department', 'designation', 'joining_date']
+        required_fields = ['faculty_id', 'name', 'email', 'department', 'designation', 'joining_date', 'password']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
         try:
+            # Hash the password before storing
+            password_hash = hashlib.sha256(data['password'].encode()).hexdigest()
+            
             with get_db() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO faculty (faculty_id, name, email, department, designation, joining_date)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO faculty (faculty_id, name, email, department, designation, joining_date, password_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (data['faculty_id'], data['name'], data['email'], data['department'],
-                     data['designation'], data['joining_date']))
+                     data['designation'], data['joining_date'], password_hash))
                 conn.commit()
                 return jsonify({'message': 'Faculty added successfully'})
         except sqlite3.IntegrityError as e:
@@ -596,6 +601,42 @@ def delete_section_mapping(mapping_id):
                 return jsonify({'error': 'Section mapping not found'}), 404
             conn.commit()
             return jsonify({'message': 'Section mapping deleted successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auth/faculty', methods=['POST'])
+def faculty_login():
+    data = request.json
+    if not data or 'faculty_id' not in data or 'password' not in data:
+        return jsonify({'error': 'Faculty ID and password are required'}), 400
+
+    faculty_id = data['faculty_id']
+    password = data['password']
+    
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM faculty WHERE faculty_id = ?', (faculty_id,))
+            faculty = cursor.fetchone()
+            
+            if faculty:
+                # Verify password
+                password_hash = hashlib.sha256(password.encode()).hexdigest()
+                if password_hash == faculty['password_hash']:
+                    return jsonify({
+                        'message': 'Login successful',
+                        'faculty': {
+                            'id': faculty['faculty_id'],
+                            'name': faculty['name'],
+                            'email': faculty['email'],
+                            'department': faculty['department'],
+                            'designation': faculty['designation']
+                        }
+                    })
+                else:
+                    return jsonify({'error': 'Invalid password'}), 401
+            else:
+                return jsonify({'error': 'Invalid faculty ID'}), 401
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
