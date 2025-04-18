@@ -10,4 +10,27 @@ venv/
 
 # Python cache files
 __pycache__/
-*.pyc 
+*.pyc
+
+# Python backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+*.db
+*.env
+
+# Frontend
+attendify-dashboard-ui/node_modules/
+attendify-dashboard-ui/.env
+attendify-dashboard-ui/.env.local
+attendify-dashboard-ui/dist/
+attendify-dashboard-ui/build/
+
+# IDE
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db 

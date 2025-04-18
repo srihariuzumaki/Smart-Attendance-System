@@ -1,62 +1,128 @@
 # Smart Attendance System
 
-A Streamlit-based web application for managing student attendance in an educational institution.
-
-# Still in working phase 
+A comprehensive attendance management system with a Python backend and React frontend.
 
 ## Features
 
-- Mark attendance for different departments, subjects, and semesters
-- Upload student lists via CSV or Excel files
-- Prevent duplicate attendance entries for the same date
-- View attendance records with date range filtering
-- Download attendance reports in CSV or Excel format
-- Support for multiple departments (CSE, ECE, ISE, MECH)
+- Mark and track student attendance
+- Support for multiple departments and subjects
+- Export attendance records in CSV and Excel formats
+- View attendance history with date range filtering
+- Dark/Light theme support
+- Responsive and modern UI
 
-## Setup
+## Project Structure
 
-1. Create a virtual environment (recommended):
-
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
+Smart_Attendance_System/
+├── api.py                 # Backend API server
+├── requirements.txt       # Python dependencies
+├── attendify-dashboard-ui/# Frontend React application
+│   ├── src/              # Frontend source code
+│   ├── package.json      # Frontend dependencies
+│   └── ...
+└── ...
+```
+
+## Setup Instructions
+
+### Backend Setup
+
+1. Create and activate a virtual environment:
+
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
 2. Install dependencies:
 
-```bash
-pip install -r requirements.txt
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Run the backend server:
+   ```bash
+   python api.py
+   ```
+
+### Frontend Setup
+
+1. Navigate to the frontend directory:
+
+   ```bash
+   cd attendify-dashboard-ui
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+## Development
+
+- Backend API runs on: http://localhost:5000
+- Frontend development server runs on: http://localhost:5173
+
+## Deployment
+
+### Backend Deployment
+
+- The backend can be deployed to any Python-supporting platform (e.g., Heroku, DigitalOcean, AWS)
+- Make sure to set appropriate environment variables
+
+### Frontend Deployment
+
+- Build the frontend for production:
+  ```bash
+  cd attendify-dashboard-ui
+  npm run build
+  ```
+- Deploy the contents of the `dist` directory to any static hosting service (e.g., Vercel, Netlify, GitHub Pages)
+
+## Environment Variables
+
+### Backend
+
+Create a `.env` file in the root directory with:
+
+```
+DATABASE_URL=...
+SECRET_KEY=...
 ```
 
-3. Run the application:
+### Frontend
 
-```bash
-streamlit run app.py
+Create a `.env` file in the `attendify-dashboard-ui` directory with:
+
+```
+VITE_API_URL=http://localhost:5000  # Update with production API URL when deploying
 ```
 
-## Usage
+## API Endpoints
 
-1. **Upload Student List**:
+- `GET /api/departments` - Get list of departments
+- `GET /api/subjects/<department>` - Get subjects for a department
+- `POST /api/upload-students` - Upload student list (CSV/Excel)
+- `POST /api/mark-attendance` - Mark attendance for a class
+- `GET /api/view-attendance` - View attendance records with filters
 
-   - Prepare a CSV or Excel file with columns: Semester, Name, AcademicYear, Department, USN
-   - Upload the file through the "Mark Attendance" tab
+## File Format
 
-2. **Mark Attendance**:
+The student list file (CSV/Excel) should have the following columns in order:
 
-   - Select Department, Academic Year, Semester, and Subject
-   - Choose the date for attendance
-   - Mark students as present using checkboxes
-   - Submit and download attendance record if needed
+- Semester
+- Name
+- AcademicYear
+- Department
+- USN (University Seat Number)
 
-3. **View Attendance**:
-   - Use the "View Attendance" tab
-   - Filter by Department, Academic Year, Semester, and Subject
-   - Select date range to view attendance records
-   - Download consolidated reports in CSV or Excel format
+## Contributing
 
-## File Structure
-
-- `app.py`: Main application code
-- `requirements.txt`: Python dependencies
-- `.gitignore`: Git ignore rules for data files
-- `README.md`: Project documentation
+Feel free to submit issues and enhancement requests!
