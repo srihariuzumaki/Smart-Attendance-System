@@ -7,7 +7,8 @@ import os
 import sqlite3
 from contextlib import contextmanager
 import hashlib
-import re  # Add this at the top with other imports
+import re
+import xlsxwriter  # Add this import
 
 app = Flask(__name__)
 CORS(app, resources={
@@ -1190,8 +1191,13 @@ def get_attendance_report(faculty_id):
         print(f"Error in get_attendance_report: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/attendance/report/download', methods=['POST'])
+@app.route('/api/attendance/report/download', methods=['POST', 'OPTIONS'])
 def download_attendance_report():
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
+
     try:
         data = request.get_json()
         if not data:
@@ -1204,7 +1210,7 @@ def download_attendance_report():
         semester = data.get('semester')
         start_date = data.get('start_date')
         end_date = data.get('end_date')
-        file_format = data.get('format', 'csv')
+        file_format = data.get('format', 'csv').lower()  # Ensure lowercase for comparison
 
         # Validate required fields
         required_fields = ['subject', 'department', 'semester', 'section', 'start_date', 'end_date']
@@ -1282,36 +1288,91 @@ def download_attendance_report():
             df = pd.DataFrame(df_data)
 
         # Prepare the file
-        buffer = io.BytesIO()
-        if file_format == 'csv':
-            df.to_csv(buffer, index=False)
-            mimetype = 'text/csv'
-            file_ext = 'csv'
-        else:
-            df.to_excel(buffer, index=False)
-            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            file_ext = 'xlsx'
-
-        buffer.seek(0)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'attendance_report_{subject}_{section}_{timestamp}.{file_ext}'
-
+        
+        if file_format == 'csv':
+            # Handle CSV format
+            output = io.BytesIO()
+            df.to_csv(output, index=False, encoding='utf-8')
+            output.seek(0)
+            
+            filename = f'attendance_report_{subject}_{section}_{timestamp}.csv'
+            mimetype = 'text/csv'
+        else:
+            # Handle Excel format
+            output = io.BytesIO()
+            
+            # Create Excel writer with xlsxwriter engine
+            workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+            worksheet = workbook.add_worksheet('Attendance Report')
+            
+            # Define formats
+            header_format = workbook.add_format({
+                'bold': True,
+                'text_wrap': True,
+                'valign': 'top',
+                'align': 'center',
+                'bg_color': '#D9D9D9',
+                'border': 1
+            })
+            
+            present_format = workbook.add_format({
+                'bg_color': '#C6EFCE',
+                'align': 'center'
+            })
+            
+            absent_format = workbook.add_format({
+                'bg_color': '#FFC7CE',
+                'align': 'center'
+            })
+            
+            # Write headers
+            for col_num, column in enumerate(df.columns):
+                worksheet.write(0, col_num, column, header_format)
+                worksheet.set_column(col_num, col_num, 15)
+            
+            # Write data
+            for row_num, row in enumerate(df.values, 1):
+                for col_num, value in enumerate(row):
+                    if col_num >= 2 and col_num < len(dates) + 2:  # Only format attendance columns
+                        if value == 'P':
+                            worksheet.write(row_num, col_num, value, present_format)
+                        elif value == 'A':
+                            worksheet.write(row_num, col_num, value, absent_format)
+                        else:
+                            worksheet.write(row_num, col_num, value)
+                    else:
+                        worksheet.write(row_num, col_num, value)
+            
+            # Close workbook
+            workbook.close()
+            
+            # Prepare file for sending
+            output.seek(0)
+            
+            filename = f'attendance_report_{subject}_{section}_{timestamp}.xlsx'
+            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        
+        # Send file with proper MIME type and filename
         response = send_file(
-            buffer,
+            output,
             mimetype=mimetype,
             as_attachment=True,
             download_name=filename
         )
-
+        
         # Add CORS headers
         response.headers['Access-Control-Allow-Origin'] = 'http://localhost:8080'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         
         return response
 
     except Exception as e:
         print(f"Error generating report download: {str(e)}")
-        return jsonify({'error': 'Failed to generate report download'}), 500
+        import traceback
+        traceback.print_exc()  # Print full traceback for debugging
+        return jsonify({'error': f'Failed to generate report download: {str(e)}'}), 500
 
 # Initialize database when the app starts
 init_db()

@@ -166,53 +166,46 @@ const Reports = () => {
     }
   };
 
-  const handleDownload = async (fileFormat: 'csv' | 'excel') => {
-    if (!selectedSection || !startDate || !endDate || attendanceData.length === 0) {
-      toast({
-        title: "Error",
-        description: "Please generate a report first",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const handleDownload = async (format: 'csv' | 'xlsx') => {
     try {
-      const response = await fetch("http://localhost:5000/api/attendance/report/download", {
-        method: "POST",
+      const response = await fetch('http://localhost:5000/api/attendance/report/download', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          subject: selectedSection.subject,
-          department: selectedSection.department,
-          semester: selectedSection.semester,
-          section: selectedSection.section,
-          start_date: format(startDate, "yyyy-MM-dd"),
-          end_date: format(endDate, "yyyy-MM-dd"),
-          format: fileFormat
-        })
+          subject: selectedSection?.subject,
+          department: selectedSection?.department,
+          semester: selectedSection?.semester,
+          section: selectedSection?.section,
+          start_date: startDate,
+          end_date: endDate,
+          format: format
+        }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to download report");
+        throw new Error('Failed to download report');
       }
 
-      // Get the filename from the Content-Disposition header or use a default
+      // Get the filename from the Content-Disposition header
       const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `attendance_report_${format(new Date(), 'yyyyMMdd')}.${fileFormat}`;
-      
-      if (contentDisposition && contentDisposition.includes('filename=')) {
-        const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+      let filename = 'attendance_report';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
         if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1].replace(/["']/g, '');
+          filename = filenameMatch[1].replace(/['"]/g, '');
         }
       }
 
-      // Create a blob from the response and download it
+      // Ensure proper file extension
+      if (!filename.endsWith(`.${format}`)) {
+        filename = `${filename}.${format}`;
+      }
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.style.display = 'none';
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
@@ -222,10 +215,10 @@ const Reports = () => {
 
       toast({
         title: "Success",
-        description: `Report downloaded as ${fileFormat.toUpperCase()}`,
+        description: "Report downloaded successfully",
       });
     } catch (error) {
-      console.error("Download error:", error);
+      console.error('Download error:', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to download report",
@@ -271,7 +264,7 @@ const Reports = () => {
         <DropdownMenuItem onClick={() => handleDownload('csv')}>
           Download as CSV
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleDownload('excel')}>
+        <DropdownMenuItem onClick={() => handleDownload('xlsx')}>
           Download as Excel
         </DropdownMenuItem>
       </DropdownMenuContent>
