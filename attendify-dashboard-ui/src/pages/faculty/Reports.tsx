@@ -182,7 +182,6 @@ const Reports = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include",
         body: JSON.stringify({
           subject: selectedSection.subject,
           department: selectedSection.department,
@@ -191,7 +190,7 @@ const Reports = () => {
           start_date: format(startDate, "yyyy-MM-dd"),
           end_date: format(endDate, "yyyy-MM-dd"),
           format: fileFormat
-        }),
+        })
       });
 
       if (!response.ok) {
@@ -200,14 +199,20 @@ const Reports = () => {
 
       // Get the filename from the Content-Disposition header or use a default
       const contentDisposition = response.headers.get('Content-Disposition');
-      const filename = contentDisposition
-        ? contentDisposition.split('filename=')[1].replace(/"/g, '')
-        : `attendance_report_${format(new Date(), 'yyyy-MM-dd')}.${fileFormat}`;
+      let filename = `attendance_report_${format(new Date(), 'yyyyMMdd')}.${fileFormat}`;
+      
+      if (contentDisposition && contentDisposition.includes('filename=')) {
+        const filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/["']/g, '');
+        }
+      }
 
       // Create a blob from the response and download it
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
@@ -217,9 +222,10 @@ const Reports = () => {
 
       toast({
         title: "Success",
-        description: "Report downloaded successfully",
+        description: `Report downloaded as ${fileFormat.toUpperCase()}`,
       });
     } catch (error) {
+      console.error("Download error:", error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to download report",
@@ -252,6 +258,25 @@ const Reports = () => {
     if (percentage >= 60) return "text-yellow-600 dark:text-yellow-400";
     return "text-red-600 dark:text-red-400";
   };
+
+  const DownloadButton = () => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="ml-auto">
+          <Download className="mr-2 h-4 w-4" />
+          Download Report
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem onClick={() => handleDownload('csv')}>
+          Download as CSV
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => handleDownload('excel')}>
+          Download as Excel
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   return (
     <div className="space-y-6">
@@ -438,22 +463,7 @@ const Reports = () => {
             </Card>
           )}
           {attendanceData.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handleDownload('csv')}>
-                  Download as CSV
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDownload('excel')}>
-                  Download as Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DownloadButton />
           )}
         </>
       )}

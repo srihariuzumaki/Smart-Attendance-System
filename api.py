@@ -10,7 +10,14 @@ import hashlib
 import re  # Add this at the top with other imports
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:8080"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
 # Define subjects for each department
 DEPARTMENT_SUBJECTS = {
@@ -1186,17 +1193,26 @@ def get_attendance_report(faculty_id):
 @app.route('/api/attendance/report/download', methods=['POST'])
 def download_attendance_report():
     try:
-        data = request.json
+        data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
 
+        # Extract parameters
+        subject = data.get('subject')
+        department = data.get('department')
+        section = data.get('section')
+        semester = data.get('semester')
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        file_format = data.get('format', 'csv')
+
         # Validate required fields
-        required_fields = ['subject', 'department', 'semester', 'section', 'start_date', 'end_date', 'format']
+        required_fields = ['subject', 'department', 'semester', 'section', 'start_date', 'end_date']
         for field in required_fields:
-            if field not in data:
+            if not data.get(field):
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
-        # Get attendance data
+        # Get attendance data from database
         with get_db() as conn:
             cursor = conn.cursor()
             
@@ -1210,8 +1226,7 @@ def download_attendance_report():
                 AND Section = ?
                 AND Date BETWEEN ? AND ?
                 ORDER BY Date
-            ''', (data['subject'], data['department'], data['semester'], 
-                  data['section'], data['start_date'], data['end_date']))
+            ''', (subject, department, semester, section, start_date, end_date))
             
             dates = [row['Date'] for row in cursor.fetchall()]
             
@@ -1236,9 +1251,8 @@ def download_attendance_report():
                     AND s.Section = ?
                 GROUP BY s.USN, s.Name
                 ORDER BY s.USN
-            ''', (data['start_date'], data['end_date'], 
-                  data['subject'], data['department'], data['semester'], data['section'],
-                  data['department'], data['semester'], data['section']))
+            ''', (start_date, end_date, subject, department, semester, section,
+                  department, semester, section))
             
             records = cursor.fetchall()
             
@@ -1266,32 +1280,34 @@ def download_attendance_report():
                 df_data.append(student_data)
             
             df = pd.DataFrame(df_data)
-            
-            # Create a buffer for the file
-            buffer = io.BytesIO()
-            
-            # Generate filename
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"attendance_report_{data['subject']}_{data['section']}_{timestamp}"
-            
-            if data['format'].lower() == 'csv':
-                # Export as CSV
-                df.to_csv(buffer, index=False)
-                mimetype = 'text/csv'
-                filename = f"{filename}.csv"
-            else:
-                # Export as Excel
-                df.to_excel(buffer, index=False)
-                mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                filename = f"{filename}.xlsx"
-            
-            buffer.seek(0)
-            return send_file(
-                buffer,
-                mimetype=mimetype,
-                as_attachment=True,
-                download_name=filename
-            )
+
+        # Prepare the file
+        buffer = io.BytesIO()
+        if file_format == 'csv':
+            df.to_csv(buffer, index=False)
+            mimetype = 'text/csv'
+            file_ext = 'csv'
+        else:
+            df.to_excel(buffer, index=False)
+            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            file_ext = 'xlsx'
+
+        buffer.seek(0)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'attendance_report_{subject}_{section}_{timestamp}.{file_ext}'
+
+        response = send_file(
+            buffer,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename
+        )
+
+        # Add CORS headers
+        response.headers['Access-Control-Allow-Origin'] = 'http://localhost:8080'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        
+        return response
 
     except Exception as e:
         print(f"Error generating report download: {str(e)}")
