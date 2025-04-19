@@ -58,6 +58,8 @@ const LoginForm = () => {
         
         // Store faculty info in localStorage for future use
         localStorage.setItem('faculty', JSON.stringify(data.faculty));
+        // Store faculty ID separately for easy access
+        localStorage.setItem('facultyId', data.faculty.id);
         
         // Clear sensitive data
         setPassword("");

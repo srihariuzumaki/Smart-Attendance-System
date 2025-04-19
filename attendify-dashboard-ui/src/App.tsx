@@ -18,6 +18,8 @@ import ManageFaculty from "./pages/admin/ManageFaculty";
 import FacultyDashboard from "./pages/faculty/Dashboard";
 import MarkAttendance from "./pages/faculty/MarkAttendance";
 import StudentUpload from "./pages/faculty/StudentUpload";
+import MySubjects from "./pages/faculty/MySubjects";
+import Reports from "./pages/faculty/Reports";
 
 // Student Pages
 import StudentDashboard from "./pages/student/Dashboard";
@@ -54,6 +56,8 @@ const App = () => (
             <Route index element={<FacultyDashboard />} />
             <Route path="mark-attendance" element={<MarkAttendance />} />
             <Route path="student-upload" element={<StudentUpload />} />
+            <Route path="my-subjects" element={<MySubjects />} />
+            <Route path="reports" element={<Reports />} />
           </Route>
           
           {/* Student Routes */}

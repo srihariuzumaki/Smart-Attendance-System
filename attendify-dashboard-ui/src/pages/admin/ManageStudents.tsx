@@ -1,331 +1,382 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Loader2, Upload, Download, FileSpreadsheet } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Upload, FileSpreadsheet, Download } from "lucide-react";
-import { format } from "date-fns";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 
 interface Student {
   USN: string;
   Name: string;
-  Semester: string;
   Department: string;
+  Semester: string;
   AcademicYear: string;
-  Section: string;
+}
+
+interface SectionMapping {
+  id: number;
+  faculty_id: string;
+  faculty_name: string;
+  department: string;
+  semester: string;
+  section: string;
+  subject: string;
+  academic_year: string;
 }
 
 const ManageStudents = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [previewData, setPreviewData] = useState<Student[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
-  // Filter states
-  const [academicYear, setAcademicYear] = useState<string | undefined>();
-  const [department, setDepartment] = useState<string | undefined>();
-  const [semester, setSemester] = useState<string | undefined>();
-  const [section, setSection] = useState<string | undefined>();
+  const [dragActive, setDragActive] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [sectionMappings, setSectionMappings] = useState<SectionMapping[]>([]);
+  const [selectedMapping, setSelectedMapping] = useState<string>("");
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+  // Fetch section mappings
+  useEffect(() => {
+    const fetchSectionMappings = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/section-mapping');
+        if (!response.ok) throw new Error('Failed to fetch section mappings');
+        const data = await response.json();
+        setSectionMappings(data.section_mappings || []);
+      } catch (error) {
+        console.error('Error fetching section mappings:', error);
         toast({
-          title: "Invalid file format",
-          description: "Please upload a CSV or Excel file",
           variant: "destructive",
+          title: "Error",
+          description: "Failed to fetch section mappings",
         });
-        return;
       }
-      setSelectedFile(file);
+    };
+
+    fetchSectionMappings();
+  }, []);
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
     }
   };
 
-  const handleUpload = async () => {
-    if (!selectedFile || !academicYear || !department || !section) {
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const files = e.dataTransfer.files;
+    if (files?.[0]) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const handleFileSelect = async (file: File) => {
+    if (!file) return;
+
+    // Check file type
+    const validTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+      'text/csv' // .csv
+    ];
+    
+    if (!validTypes.includes(file.type)) {
       toast({
-        title: "Missing information",
-        description: "Please select a file and fill in all required fields",
         variant: "destructive",
+        title: "Invalid file type",
+        description: "Please upload an Excel (.xlsx, .xls) or CSV file",
       });
       return;
     }
 
+    if (!selectedMapping) {
+      toast({
+        variant: "destructive",
+        title: "Section Required",
+        description: "Please select a section before uploading students",
+      });
+      return;
+    }
+
+    setSelectedFile(file);
+    setPreviewData([]); // Clear previous preview
+    setValidationErrors([]); // Clear previous errors
     setLoading(true);
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('academicYear', academicYear);
-    formData.append('department', department);
-    formData.append('section', section);
 
     try {
-      const response = await fetch('http://localhost:5000/api/upload-students', {
-        method: 'POST',
-        body: formData,
-      });
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('section_mapping_id', selectedMapping);
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to upload students');
-      }
+      const response = await fetch('http://localhost:5000/api/upload-students/preview', {
+        method: 'POST',
+        body: formData
+      });
 
       const data = await response.json();
-      setStudents(data.students);
 
-      toast({
-        title: "Success",
-        description: `Successfully uploaded ${data.students.length} students`,
-      });
+      if (!response.ok) {
+        console.error('Validation failed:', data);
+        if (data.errors && Array.isArray(data.errors)) {
+          setValidationErrors(data.errors);
+          toast({
+            variant: "destructive",
+            title: "Validation Failed",
+            description: "Please check the validation errors below",
+          });
+        } else {
+          throw new Error(data.error || 'Failed to preview file');
+        }
+        return;
+      }
 
-      // Reset file selection
-      setSelectedFile(null);
-      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
+      setPreviewData(data.students || []);
+      setValidationErrors([]);
     } catch (error) {
+      console.error('Error during file upload:', error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to upload students",
         variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to preview file",
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDownloadTemplate = () => {
-    // Create CSV template
-    const template = "USN,Name,Semester\n";
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'student_template.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-  };
+  const handleUpload = async () => {
+    if (!selectedFile || !selectedMapping) return;
 
-  const fetchStudents = async () => {
-    if (!department) {
-      toast({
-        title: "Missing information",
-        description: "Please select a department",
-        variant: "destructive",
-      });
-      return;
-    }
+    setLoading(true);
+    setUploadProgress(0);
 
     try {
-      const params = new URLSearchParams({
-        department,
-        ...(academicYear && { academicYear }),
-        ...(semester && { semester }),
-        ...(section && { section }),
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('section_mapping_id', selectedMapping);
+
+      const response = await fetch('http://localhost:5000/api/upload-students', {
+        method: 'POST',
+        body: formData
       });
 
-      const response = await fetch(`http://localhost:5000/api/students?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch students');
-      
       const data = await response.json();
-      setStudents(data.students);
+
+      if (!response.ok) {
+        if (data.errors && Array.isArray(data.errors)) {
+          setValidationErrors(data.errors);
+          throw new Error("Please check the validation errors below");
+        } else {
+          throw new Error(data.error || 'Failed to upload students');
+        }
+      }
+
+      toast({
+        title: "Upload Successful",
+        description: `Successfully uploaded ${data.students.length} students`,
+      });
+
+      // Reset states
+      setSelectedFile(null);
+      setPreviewData([]);
+      setValidationErrors([]);
+      setUploadProgress(100);
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to fetch students",
         variant: "destructive",
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload students",
       });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const downloadTemplate = () => {
+    // Create template CSV content with example data
+    const headers = ["USN", "Name", "Department", "Semester", "AcademicYear"];
+    const exampleRow = ["1XY21CS001", "John Doe", "CSE", "6", "2023-24"];
+    const csvContent = "data:text/csv;charset=utf-8," + 
+      headers.join(",") + "\n" +
+      exampleRow.join(",");
+    
+    // Create download link
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "student_upload_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Manage Students</h1>
-        <p className="text-muted-foreground">Upload and manage student details</p>
+        <p className="text-muted-foreground">Upload and manage student records</p>
       </div>
 
-      <Card className="shadow-md">
+      <Card>
         <CardHeader>
           <CardTitle>Upload Students</CardTitle>
-          <CardDescription>Upload student details using CSV or Excel file</CardDescription>
+          <CardDescription>
+            Upload student records using Excel or CSV file
+          </CardDescription>
         </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent>
+          <div className="space-y-6">
+            {/* Section Selection */}
             <div className="space-y-2">
-              <Label htmlFor="academic-year">Academic Year</Label>
-              <Select value={academicYear} onValueChange={setAcademicYear}>
-                <SelectTrigger id="academic-year">
-                  <SelectValue placeholder="Select Academic Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="2023-2024">2023-2024</SelectItem>
-                  <SelectItem value="2024-2025">2024-2025</SelectItem>
-                  <SelectItem value="2025-2026">2025-2026</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Select value={department} onValueChange={setDepartment}>
-                <SelectTrigger id="department">
-                  <SelectValue placeholder="Select Department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cse">Computer Science & Engineering</SelectItem>
-                  <SelectItem value="ece">Electronics & Communication</SelectItem>
-                  <SelectItem value="ise">Information Technology</SelectItem>
-                  <SelectItem value="mech">Mechanical Engineering</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="section">Section</Label>
-              <Select value={section} onValueChange={setSection}>
-                <SelectTrigger id="section">
-                  <SelectValue placeholder="Select Section" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="A">Section A</SelectItem>
-                  <SelectItem value="B">Section B</SelectItem>
-                  <SelectItem value="C">Section C</SelectItem>
-                  <SelectItem value="D">Section D</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="file-upload">Upload File</Label>
-              <Input
-                id="file-upload"
-                type="file"
-                accept=".csv,.xlsx"
-                onChange={handleFileChange}
-                className="cursor-pointer"
-              />
-              <p className="text-xs text-muted-foreground">
-                Upload CSV or Excel file with student details
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleDownloadTemplate}
-              className="flex items-center gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Download Template
-            </Button>
-          </div>
-        </CardContent>
-
-        <CardFooter>
-          <Button 
-            onClick={handleUpload} 
-            disabled={loading || !selectedFile}
-            className="w-full"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload Students
-              </>
-            )}
-          </Button>
-        </CardFooter>
-      </Card>
-
-      <Card className="shadow-md">
-        <CardHeader>
-          <CardTitle>View Students</CardTitle>
-          <CardDescription>Filter and view student details</CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Filter by Semester</Label>
-              <Select value={semester} onValueChange={setSemester}>
+              <Label>Select Section</Label>
+              <Select value={selectedMapping} onValueChange={setSelectedMapping}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All Semesters" />
+                  <SelectValue placeholder="Select a section" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Semesters</SelectItem>
-                  {Array.from({ length: 8 }, (_, i) => (
-                    <SelectItem key={i + 1} value={String(i + 1)}>
-                      {`${i + 1}${getSemesterSuffix(i + 1)} Semester`}
+                  {sectionMappings.map((mapping) => (
+                    <SelectItem key={mapping.id} value={mapping.id.toString()}>
+                      {`${mapping.department} - Sem ${mapping.semester} - Sec ${mapping.section} (${mapping.faculty_name})`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="md:col-span-2 flex items-end">
-              <Button onClick={fetchStudents} className="ml-auto">
-                Apply Filters
+            {/* Template Download */}
+            <div>
+              <Button variant="outline" onClick={downloadTemplate}>
+                <Download className="mr-2 h-4 w-4" />
+                Download Template
               </Button>
             </div>
-          </div>
 
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>USN</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Semester</TableHead>
-                  <TableHead>Academic Year</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {students.map((student) => (
-                  <TableRow key={student.USN}>
-                    <TableCell>{student.USN}</TableCell>
-                    <TableCell>{student.Name}</TableCell>
-                    <TableCell className="uppercase">{student.Department}</TableCell>
-                    <TableCell>{student.Section}</TableCell>
-                    <TableCell>{student.Semester}</TableCell>
-                    <TableCell>{student.AcademicYear}</TableCell>
-                  </TableRow>
-                ))}
-                {students.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                      No students found
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            {/* Validation Errors */}
+            {validationErrors.length > 0 && (
+              <Alert variant="destructive">
+                <AlertTitle>Validation Errors</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc pl-4 mt-2">
+                    {validationErrors.map((error, index) => (
+                      <li key={index}>{error}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* File Upload Area */}
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center ${
+                dragActive ? "border-primary" : "border-muted-foreground/25"
+              }`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <input
+                type="file"
+                id="file-upload"
+                className="hidden"
+                accept=".csv,.xlsx,.xls"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileSelect(file);
+                }}
+              />
+              <label
+                htmlFor="file-upload"
+                className="cursor-pointer flex flex-col items-center gap-2"
+              >
+                <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  Drag and drop or click to upload
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Supports CSV, Excel (.xlsx, .xls)
+                </span>
+              </label>
+            </div>
+
+            {/* Preview Table */}
+            {previewData.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Preview</h3>
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>USN</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Department</TableHead>
+                        <TableHead>Semester</TableHead>
+                        <TableHead>Academic Year</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewData.map((student, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{student.USN}</TableCell>
+                          <TableCell>{student.Name}</TableCell>
+                          <TableCell>{student.Department}</TableCell>
+                          <TableCell>{student.Semester}</TableCell>
+                          <TableCell>{student.AcademicYear}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <Button
+                  onClick={handleUpload}
+                  disabled={loading}
+                  className="w-full"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Students
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
     </div>
   );
-};
-
-// Helper function to get the correct suffix for semester numbers
-const getSemesterSuffix = (num: number): string => {
-  if (num === 1) return "st";
-  if (num === 2) return "nd";
-  if (num === 3) return "rd";
-  return "th";
 };
 
 export default ManageStudents; 

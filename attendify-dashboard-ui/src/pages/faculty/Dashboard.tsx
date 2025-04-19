@@ -196,23 +196,23 @@ const FacultyDashboard = () => {
                 <BarChart className="h-5 w-5" />
                 <span>View Reports</span>
               </Button>
-              
+
               <Button 
                 variant="outline" 
                 className="h-20 flex flex-col items-center justify-center gap-1"
-                onClick={() => navigate("/faculty/student-upload")}
+                onClick={() => navigate("/faculty/my-subjects")}
               >
-                <Upload className="h-5 w-5" />
-                <span>Upload Students</span>
+                <BookOpen className="h-5 w-5" />
+                <span>My Subjects</span>
               </Button>
               
               <Button 
                 variant="outline" 
                 className="h-20 flex flex-col items-center justify-center gap-1"
-                onClick={() => navigate("/faculty/subjects")}
+                onClick={() => navigate("/faculty/upload")}
               >
-                <BookOpen className="h-5 w-5" />
-                <span>My Subjects</span>
+                <Upload className="h-5 w-5" />
+                <span>Upload Students</span>
               </Button>
             </div>
           </CardContent>

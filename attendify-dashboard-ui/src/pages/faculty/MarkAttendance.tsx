@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, CheckCircle, AlertCircle, Check, RefreshCw } from "lucide-react";
+import { Calendar as CalendarIcon, CheckCircle, AlertCircle, Check, RefreshCw, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
@@ -32,42 +32,62 @@ interface Student {
   present: boolean;
 }
 
+interface Section {
+  id: string;
+  department: string;
+  semester: string;
+  section: string;
+  subject: string;
+}
+
 const MarkAttendance = () => {
   const { toast } = useToast();
   
-  const [department, setDepartment] = useState("");
-  const [academicYear, setAcademicYear] = useState("");
-  const [semester, setSemester] = useState("");
-  const [section, setSection] = useState("");
-  const [subject, setSubject] = useState("");
+  const [sections, setSections] = useState<Section[]>([]);
+  const [selectedSection, setSelectedSection] = useState("");
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
-  const [availableAcademicYears, setAvailableAcademicYears] = useState<string[]>([]);
-  const [availableSemesters, setAvailableSemesters] = useState<string[]>([]);
-  
-  const handleCheckboxChange = (usn: string) => {
-    setStudents(
-      students.map(student => 
-        student.USN === usn ? { ...student, present: !student.present } : student
-      )
-    );
-  };
-  
-  const handleMarkAllPresent = () => {
-    setStudents(
-      students.map(student => ({ ...student, present: true }))
-    );
-  };
-  
+
+  useEffect(() => {
+    const fetchSections = async () => {
+      try {
+        const facultyId = localStorage.getItem("facultyId");
+        if (!facultyId) {
+          toast({
+            title: "Error",
+            description: "Faculty ID not found. Please login again.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const response = await fetch(`http://localhost:5000/api/faculty/${facultyId}/sections`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch sections");
+        }
+        const data = await response.json();
+        setSections(data.sections || []);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to fetch sections",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchSections();
+  }, []);
+
   const handleFetchStudents = async () => {
-    if (!department || !academicYear || !semester || !section || !subject) {
+    if (!selectedSection) {
       toast({
         variant: "destructive",
         title: "Missing fields",
-        description: "Please fill in all the required fields.",
+        description: "Please select a section.",
       });
       return;
     }
@@ -75,12 +95,35 @@ const MarkAttendance = () => {
     setIsLoadingStudents(true);
     
     try {
-      // Fetch students from the backend
-      const response = await fetch(`http://localhost:5000/api/students?department=${department}&academicYear=${academicYear}&semester=${semester}`);
-      const data = await response.json();
+      const section = sections.find(s => s.id === selectedSection);
+      if (!section) {
+        throw new Error("Selected section not found");
+      }
+
+      // Get academic year from section mapping
+      const response = await fetch(`http://localhost:5000/api/section-mapping?department=${section.department}&semester=${section.semester}`);
+      const mappingData = await response.json();
       
       if (!response.ok) {
-        if (response.status === 404) {
+        throw new Error('Failed to fetch section mapping');
+      }
+
+      const sectionMapping = mappingData.section_mappings.find(
+        (mapping: any) => mapping.section === section.section && mapping.subject === section.subject
+      );
+
+      if (!sectionMapping) {
+        throw new Error('Section mapping not found');
+      }
+
+      // Fetch students with the academic year from section mapping
+      const studentsResponse = await fetch(
+        `http://localhost:5000/api/students?department=${section.department}&semester=${section.semester}&academicYear=${sectionMapping.academic_year}`
+      );
+      const data = await studentsResponse.json();
+      
+      if (!studentsResponse.ok) {
+        if (studentsResponse.status === 404) {
           toast({
             variant: "destructive",
             title: "No Students Found",
@@ -101,7 +144,7 @@ const MarkAttendance = () => {
       
       toast({
         title: "Student data loaded",
-        description: `Loaded ${studentsWithAttendance.length} students for ${subject} - ${section}`,
+        description: `Loaded ${studentsWithAttendance.length} students for ${section.subject} - ${section.section}`,
       });
     } catch (error) {
       toast({
@@ -125,18 +168,29 @@ const MarkAttendance = () => {
       return;
     }
     
+    const section = sections.find(s => s.id === selectedSection);
+    if (!section) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Selected section not found",
+      });
+      return;
+    }
+
     setLoading(true);
     
     try {
       const attendanceData = {
-        department,
-        semester,
-        subject,
+        department: section.department,
+        semester: section.semester,
+        subject: section.subject,
+        section: section.section,
         date: format(date!, 'yyyy-MM-dd'),
         records: students.map(student => ({
-          ...student,
-          Date: format(date!, 'yyyy-MM-dd'),
-          Subject: subject,
+          USN: student.USN,
+          present: student.present,
+          AcademicYear: student.AcademicYear
         }))
       };
       
@@ -149,7 +203,8 @@ const MarkAttendance = () => {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to submit attendance');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to submit attendance');
       }
       
       setSubmitted(true);
@@ -166,60 +221,33 @@ const MarkAttendance = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to submit attendance. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to submit attendance. Please try again.",
       });
     } finally {
       setLoading(false);
     }
   };
-  
+
+  const handleMarkAllPresent = () => {
+    setStudents(
+      students.map(student => ({ ...student, present: true }))
+    );
+  };
+
+  const handleCheckboxChange = (usn: string) => {
+    setStudents(
+      students.map(student => 
+        student.USN === usn ? { ...student, present: !student.present } : student
+      )
+    );
+  };
+
   const resetForm = () => {
     setSubmitted(false);
     setStudents([]);
-    setDepartment("");
-    setAcademicYear("");
-    setSemester("");
-    setSection("");
-    setSubject("");
+    setSelectedSection("");
     setDate(new Date());
   };
-
-  // Fetch available academic years and semesters when department changes
-  const handleDepartmentChange = async (value: string) => {
-    setDepartment(value);
-    try {
-      const response = await fetch(`http://localhost:5000/api/students/metadata?department=${value}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          toast({
-            variant: "destructive",
-            title: "No Data Found",
-            description: data.message || "Please upload student data first.",
-          });
-          setAvailableAcademicYears([]);
-          setAvailableSemesters([]);
-          return;
-        }
-        throw new Error('Failed to fetch metadata');
-      }
-      
-      setAvailableAcademicYears(data.academicYears);
-      setAvailableSemesters(data.semesters);
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to fetch class information.",
-      });
-      setAvailableAcademicYears([]);
-      setAvailableSemesters([]);
-    }
-  };
-
-  // Add totalClasses state
-  const [totalClasses, setTotalClasses] = useState(42); // This would come from your backend in a real app
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -235,77 +263,19 @@ const MarkAttendance = () => {
         </CardHeader>
         
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Select value={department} onValueChange={handleDepartmentChange} disabled={submitted}>
-                <SelectTrigger id="department">
-                  <SelectValue placeholder="Select Department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cse">Computer Science & Engineering</SelectItem>
-                  <SelectItem value="ece">Electronics & Communication</SelectItem>
-                  <SelectItem value="ise">Information Science</SelectItem>
-                  <SelectItem value="mech">Mechanical Engineering</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="academic-year">Academic Year</Label>
-              <Select value={academicYear} onValueChange={setAcademicYear} disabled={submitted || !department}>
-                <SelectTrigger id="academic-year">
-                  <SelectValue placeholder="Select Academic Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableAcademicYears.map((year) => (
-                    <SelectItem key={year} value={year}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="semester">Semester</Label>
-              <Select value={semester} onValueChange={setSemester} disabled={submitted || !department}>
-                <SelectTrigger id="semester">
-                  <SelectValue placeholder="Select Semester" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableSemesters.map((sem) => (
-                    <SelectItem key={sem} value={sem}>{sem} Semester</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="section">Section</Label>
-              <Select value={section} onValueChange={setSection} disabled={submitted}>
+              <Select value={selectedSection} onValueChange={setSelectedSection} disabled={submitted}>
                 <SelectTrigger id="section">
                   <SelectValue placeholder="Select Section" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="A">Section A</SelectItem>
-                  <SelectItem value="B">Section B</SelectItem>
-                  <SelectItem value="C">Section C</SelectItem>
-                  <SelectItem value="D">Section D</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="subject">Subject</Label>
-              <Select value={subject} onValueChange={setSubject} disabled={submitted}>
-                <SelectTrigger id="subject">
-                  <SelectValue placeholder="Select Subject" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dsa">Data Structures & Algorithms</SelectItem>
-                  <SelectItem value="dbms">Database Management Systems</SelectItem>
-                  <SelectItem value="os">Operating Systems</SelectItem>
-                  <SelectItem value="cn">Computer Networks</SelectItem>
-                  <SelectItem value="se">Software Engineering</SelectItem>
+                  {sections.map((section) => (
+                    <SelectItem key={section.id} value={section.id}>
+                      {section.subject} - {section.department} {section.semester} {section.section}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -328,146 +298,92 @@ const MarkAttendance = () => {
                     mode="single"
                     selected={date}
                     onSelect={setDate}
-                    initialFocus
+                    disabled={submitted}
                   />
                 </PopoverContent>
               </Popover>
             </div>
           </div>
-          
-          <div className="mt-4 flex justify-center">
-            <Button 
-              onClick={handleFetchStudents}
-              disabled={isLoadingStudents || submitted}
-            >
-              {isLoadingStudents ? "Loading Students..." : "Load Student List"}
-            </Button>
+
+          <div className="mt-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <Button
+                onClick={handleFetchStudents}
+                disabled={!selectedSection || !date || submitted}
+              >
+                {isLoadingStudents ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Load Students'
+                )}
+              </Button>
+              
+              {students.length > 0 && !submitted && (
+                <Button variant="outline" onClick={handleMarkAllPresent}>
+                  Mark All Present
+                </Button>
+              )}
+            </div>
+
+            {students.length > 0 && (
+              <>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>USN</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead className="text-right">Present</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {students.map((student) => (
+                        <TableRow key={student.USN}>
+                          <TableCell>{student.USN}</TableCell>
+                          <TableCell>{student.Name}</TableCell>
+                          <TableCell className="text-right">
+                            <Checkbox
+                              checked={student.present}
+                              onCheckedChange={() => handleCheckboxChange(student.USN)}
+                              disabled={submitted}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="flex justify-end space-x-4">
+                  <Button
+                    variant="outline"
+                    onClick={resetForm}
+                    disabled={!submitted}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={loading || submitted}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Attendance'
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
-      
-      {students.length > 0 && (
-        <Card className="shadow-md">
-          <CardHeader>
-            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-              <div>
-                <CardTitle>Student Attendance</CardTitle>
-                <CardDescription>
-                  {subject && section 
-                    ? `${subject} - Section ${section} (${date ? format(date, "PPP") : "Today"})`
-                    : "Mark attendance for the selected class"
-                  }
-                </CardDescription>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={handleMarkAllPresent}
-                disabled={submitted}
-                className="self-start md:self-center"
-              >
-                Mark All Present
-              </Button>
-            </div>
-          </CardHeader>
-          
-          <CardContent>
-            {submitted ? (
-              <div className="space-y-6">
-                <div className="flex flex-col items-center justify-center text-center p-6">
-                  <div className="rounded-full bg-green-100 dark:bg-green-900/20 p-3 mb-4">
-                    <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h3 className="text-xl font-medium mb-1">Attendance Submitted Successfully!</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Attendance for {subject} ({section}) on {date ? format(date, "PPP") : "today"} has been recorded.
-                  </p>
-                  <Button onClick={resetForm} className="gap-2">
-                    <RefreshCw className="h-4 w-4" /> Mark Another Class
-                  </Button>
-                </div>
-
-                <AttendanceReport
-                  students={students}
-                  subject={subject}
-                  section={section}
-                  department={department}
-                  semester={semester}
-                  academicYear={academicYear}
-                  date={date!}
-                />
-              </div>
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12"></TableHead>
-                      <TableHead>USN</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Semester</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {students.map((student) => (
-                      <TableRow key={student.USN}>
-                        <TableCell>
-                          <Checkbox
-                            checked={student.present}
-                            onCheckedChange={() => handleCheckboxChange(student.USN)}
-                            disabled={submitted}
-                          />
-                        </TableCell>
-                        <TableCell>{student.USN}</TableCell>
-                        <TableCell>{student.Name}</TableCell>
-                        <TableCell>{student.Semester}</TableCell>
-                        <TableCell>
-                          {student.present ? (
-                            <span className="inline-flex items-center text-green-600">
-                              <CheckCircle className="mr-1 h-4 w-4" />
-                              Present
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center text-red-600">
-                              <AlertCircle className="mr-1 h-4 w-4" />
-                              Absent
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-          
-          {!submitted && (
-            <CardFooter className="flex justify-center border-t pt-4">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button disabled={loading} className="min-w-[200px]">
-                    {loading ? "Submitting..." : "Submit Attendance"}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Confirm Attendance Submission</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will record attendance for {students.filter(s => s.present).length} out of {students.length} students.
-                      Are you sure you want to submit? This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleSubmit}>Submit</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </CardFooter>
-          )}
-        </Card>
-      )}
     </div>
   );
 };
