@@ -34,9 +34,6 @@ def init_db():
     with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         
-        # Drop existing attendance table to recreate with correct schema
-        cursor.execute('DROP TABLE IF EXISTS attendance')
-        
         # Create students table with all required columns
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS students (
@@ -97,6 +94,45 @@ def init_db():
         
         conn.commit()
         print("Database initialized successfully with all required tables and columns.")
+
+def verify_database():
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Check if all required tables exist
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name IN ('students', 'faculty', 'section_mapping', 'attendance')
+            """)
+            existing_tables = set(row['name'] for row in cursor.fetchall())
+            required_tables = {'students', 'faculty', 'section_mapping', 'attendance'}
+            
+            missing_tables = required_tables - existing_tables
+            if missing_tables:
+                print(f"Warning: Missing tables: {missing_tables}")
+                init_db()  # Initialize only if tables are missing
+                return
+            
+            # Verify attendance table structure
+            cursor.execute('PRAGMA table_info(attendance)')
+            columns = {row['name'] for row in cursor.fetchall()}
+            required_columns = {
+                'id', 'USN', 'Date', 'Subject', 'Present', 
+                'Department', 'Semester', 'Section', 'AcademicYear'
+            }
+            
+            if not required_columns.issubset(columns):
+                missing_columns = required_columns - columns
+                print(f"Warning: Attendance table is missing columns: {missing_columns}")
+                print("Please backup your data and contact system administrator to fix the database schema.")
+                return
+            
+            print("Database verification completed successfully")
+            
+    except sqlite3.Error as e:
+        print(f"Database verification failed: {e}")
+        init_db()  # Initialize only on complete database failure
 
 @contextmanager
 def get_db():
@@ -409,23 +445,27 @@ def mark_attendance():
         attendance_date = data['date']
         records = data['records']
 
-        # Print received data for debugging
-        print("Received attendance data:", {
-            'department': department,
-            'semester': semester,
-            'subject': subject,
-            'section': section,
-            'date': attendance_date,
-            'records_count': len(records) if records else 0
-        })
+        # Enhanced debugging output
+        print("\n=== ATTENDANCE MARKING DEBUG ===")
+        print(f"Time: {datetime.now()}")
+        print(f"Department: {department}")
+        print(f"Semester: {semester}")
+        print(f"Subject: {subject}")
+        print(f"Section: {section}")
+        print(f"Date: {attendance_date}")
+        print(f"Number of records: {len(records)}")
+        print("Sample records:", records[:2] if records else "No records")
 
         # Validate records
         if not records or not isinstance(records, list):
+            print("Error: Invalid or empty records")
             return jsonify({'error': 'Invalid or empty records'}), 400
 
         # Check if attendance already exists for this section
         with get_db() as conn:
             cursor = conn.cursor()
+            
+            # Debug: Check existing attendance
             cursor.execute('''
                 SELECT COUNT(*) as count
                 FROM attendance
@@ -436,7 +476,11 @@ def mark_attendance():
                 AND Date = ?
             ''', (department, semester, subject, section, attendance_date))
             
-            if cursor.fetchone()['count'] > 0:
+            existing_count = cursor.fetchone()['count']
+            print(f"Existing attendance records for this section: {existing_count}")
+            
+            if existing_count > 0:
+                print("Error: Attendance already exists for this section and date")
                 return jsonify({'error': 'Attendance already marked for this section and date'}), 400
 
             # Get academic year from section mapping
@@ -460,9 +504,11 @@ def mark_attendance():
             
             result = cursor.fetchone()
             if not result:
+                print("Error: Section mapping not found")
                 return jsonify({'error': 'Section mapping not found. Please contact admin to map this section.'}), 400
             
             academic_year = result['academic_year']
+            print(f"Academic year from mapping: {academic_year}")
 
             # Validate each record and prepare data for insertion
             attendance_records = []
@@ -487,7 +533,10 @@ def mark_attendance():
                 })
 
             if not attendance_records:
+                print("Error: No valid records to insert")
                 return jsonify({'error': 'No valid records to insert'}), 400
+
+            print(f"Prepared {len(attendance_records)} valid records for insertion")
 
             # First verify all USNs exist in students table
             usns = [record['USN'] for record in attendance_records]
@@ -497,6 +546,7 @@ def mark_attendance():
             
             missing_usns = set(usns) - existing_usns
             if missing_usns:
+                print(f"Error: Invalid USNs found: {missing_usns}")
                 return jsonify({'error': f'Invalid USNs: {", ".join(missing_usns)}'}), 400
 
             try:
@@ -1378,4 +1428,5 @@ def download_attendance_report():
 init_db()
 
 if __name__ == '__main__':
+    verify_database()  # Verify database structure before starting the app
     app.run(debug=True, port=5000)
