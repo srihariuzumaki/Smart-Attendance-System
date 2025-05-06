@@ -25,6 +25,17 @@ interface Subject {
   branch: string;
 }
 
+interface SectionMapping {
+  id: string;
+  faculty_id: string;
+  department: string;
+  semester: string;
+  section: string;
+  subject_code: string;
+  subject_name: string;
+  academic_year: string;
+}
+
 const AddFacultyDialog = ({ department, onFacultyAdded }: { department: string, onFacultyAdded: () => void }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -216,16 +227,38 @@ const AddFacultyDialog = ({ department, onFacultyAdded }: { department: string, 
 const MapFaculty = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [academicYear, setAcademicYear] = useState("");
+  const [facultyId, setFacultyId] = useState("");
   const [department, setDepartment] = useState("");
   const [semester, setSemester] = useState("");
   const [section, setSection] = useState("");
   const [subject, setSubject] = useState("");
-  const [facultyId, setFacultyId] = useState("");
-  const [facultyList, setFacultyList] = useState<Faculty[]>([]);
+  const [academicYear, setAcademicYear] = useState("");
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [mappings, setMappings] = useState<SectionMapping[]>([]);
   const [group, setGroup] = useState<string>("cse_physics");
   const [scheme, setScheme] = useState<string>("2022");
+  const [facultyList, setFacultyList] = useState<Faculty[]>([]);
+
+  const fetchMappings = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/section-mapping');
+      if (!response.ok) {
+        throw new Error('Failed to fetch mappings');
+      }
+      const data = await response.json();
+      setMappings(data.section_mappings || []);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to fetch mappings",
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchMappings();
+  }, []);
 
   useEffect(() => {
     if (department && semester) {
@@ -280,6 +313,17 @@ const MapFaculty = () => {
       return;
     }
 
+    // Find the selected subject details
+    const selectedSubject = subjects.find(s => s.code === subject);
+    if (!selectedSubject) {
+      toast({
+        title: "Error",
+        description: "Invalid subject selected",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch('http://localhost:5000/api/section-mapping', {
@@ -292,20 +336,20 @@ const MapFaculty = () => {
           department,
           semester,
           section,
-          subject,
+          subject_code: selectedSubject.code,
+          subject_name: selectedSubject.name,
           academic_year: academicYear,
         }),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to map faculty');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to map faculty');
       }
 
-      const selectedFaculty = facultyList.find(f => f.faculty_id === facultyId);
       toast({
         title: "Success",
-        description: `${selectedFaculty?.name} has been assigned to ${subject} - Section ${section}`,
+        description: "Faculty mapped successfully",
         action: (
           <CheckCircle2 className="h-4 w-4 text-green-500" />
         ),
@@ -313,13 +357,20 @@ const MapFaculty = () => {
 
       // Reset form
       setFacultyId("");
-      setSubject("");
+      setDepartment("");
+      setSemester("");
       setSection("");
+      setSubject("");
+      setAcademicYear("");
+      setSubjects([]);
+
+      // Refresh mappings
+      fetchMappings();
     } catch (error) {
       toast({
+        variant: "destructive",
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to map faculty",
-        variant: "destructive",
       });
     } finally {
       setLoading(false);

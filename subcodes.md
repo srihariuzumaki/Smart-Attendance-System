@@ -482,8 +482,6 @@ Code	Subjects	Sem	Scheme	Branch
 	2021	CS
 21CS744	Robotic Process Automation Design and Development	7
 	2021	CS
-21CS745	NoSQL Data Base	7
-	2021	CS
 21CS751	Programming in Python	7
 	2021	CS
 21CS752	Introduction to AI and ML	7
@@ -505,6 +503,85 @@ Code	Subjects	Sem	Scheme	Branch
 21INT82	Research Internship/ Industry Internship	8
 	2021	CS
 
+VTU CSE 5 Sem 2022 scheme Subject Codes
+5 Semester
 
-    
+Computer Science and Engineering
+
+CBCS Scheme
+Subject
+Code    Subjects    Sem    Scheme    Branch
+BCS501    Software Engineering & Project Management    5    2022    CS
+BCS502    Computer Networks    5    2022    CS
+BCS503    Theory of Computation    5    2022    CS
+BCSL504    Web Technology Lab    5    2022    CS
+BCS515A    Computer Graphics    5    2022    CS
+BCS515B    Artificial Intelligence    5    2022    CS
+BCS515C    Unix System Programming    5    2022    CS
+BCS515D    Distributed Systems    5    2022    CS
+BCS586    Mini Project    5    2022    CS
+BRMK557    Research Methodology and IPR    5    2022    CS
+BCS508    Environmental Studies and E-waste Management    5    2022    CS
+BNSK559    National Service Scheme (NSS)    5    2022    CS
+BPEK559    Physical Education (PE)    5    2022    CS
+BYOK559    Yoga    5    2022    CS
+
+VTU CSE 6 Sem 2022 scheme Subject Codes
+6 Semester
+
+Computer Science and Engineering
+
+CBCS Scheme
+Subject
+Code    Subjects    Sem    Scheme    Branch
+BCS601    Cloud Computing (Open Stack /Google)    6    2022    CS
+BCS602    Machine Learning    6    2022    CS
+BCSL606    Machine Learning lab    6    2022    CS
+BCS685    Project Phase I    6    2022    CS
+BIKS609    Indian Knowledge System    6    2022    CS
+BNSK658    National Service Scheme (NSS)    6    2022    CS
+BPEK658    Physical Education (PE)    6    2022    CS
+BYOK658    Yoga    6    2022    CS
+
+# Professional Elective Course
+BCS613A    Blockchain Technology    6    2022    CS
+BCS613B    Computer Vision    6    2022    CS
+BCS613C    Compiler Design    6    2022    CS
+BCS613D    Advanced Java    6    2022    CS
+
+# Open Elective Course
+BCS654A    Introduction to Data Structures    6    2022    CS
+BCS654B    Fundamentals of Operating Systems    6    2022    CS
+BIS654C    Mobile Application Development    6    2022    CS
+BAI654D    Introduction to Artificial Intelligence    6    2022    CS
+
+# Ability Enhancement Course / Skill Enhancement Course
+BISL657A    Tosca – Automated Software testing    6    2022    CS
+BCSL657B    React    6    2022    CS
+BAIL657C    Generative AI    6    2022    CS
+BCSL657D    Devops    6    2022    CS
+
+VTU CSE 7 Sem 2022 scheme Subject Codes
+7 Semester
+
+Computer Science and Engineering
+
+CBCS Scheme
+Subject
+Code    Subjects    Sem    Scheme    Branch
+BCS701    Internet of Things    7    2022    CS
+BCS702    Parallel Computing    7    2022    CS
+BCS703    Cryptography & Network Security    7    2022    CS
+BCS786    Major Project Phase-II    7    2022    CS
+
+# Professional Elective Course
+BCS714A    Deep Learning    7    2022    CS
+BCS714B    Natural Language Processing    7    2022    CS
+BCS714C    Program Verification    7    2022    CS
+BCS714D    Big Data Analytics    7    2022    CS
+
+# Open Elective Course
+BCS755A    Introduction to DBMS    7    2022    CS
+BCS755B    Introduction to Algorithms    7    2022    CS
+BCS755C    Software Engineering    7    2022    CS
 

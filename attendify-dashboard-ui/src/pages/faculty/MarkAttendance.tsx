@@ -10,16 +10,16 @@ import { Calendar as CalendarIcon, CheckCircle, AlertCircle, Check, RefreshCw, L
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
-import { 
-  AlertDialog, 
-  AlertDialogAction, 
-  AlertDialogCancel, 
-  AlertDialogContent, 
-  AlertDialogDescription, 
-  AlertDialogFooter, 
-  AlertDialogHeader, 
-  AlertDialogTitle, 
-  AlertDialogTrigger 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import AttendanceReport from "@/components/faculty/AttendanceReport";
 
@@ -37,12 +37,13 @@ interface Section {
   department: string;
   semester: string;
   section: string;
-  subject: string;
+  subject_code: string;
+  subject_name: string;
 }
 
 const MarkAttendance = () => {
   const { toast } = useToast();
-  
+
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedSection, setSelectedSection] = useState("");
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -91,9 +92,9 @@ const MarkAttendance = () => {
       });
       return;
     }
-    
+
     setIsLoadingStudents(true);
-    
+
     try {
       const section = sections.find(s => s.id === selectedSection);
       if (!section) {
@@ -103,13 +104,13 @@ const MarkAttendance = () => {
       // Get academic year from section mapping
       const response = await fetch(`http://localhost:5000/api/section-mapping?department=${section.department}&semester=${section.semester}`);
       const mappingData = await response.json();
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch section mapping');
       }
 
       const sectionMapping = mappingData.section_mappings.find(
-        (mapping: any) => mapping.section === section.section && mapping.subject === section.subject
+        (mapping: any) => mapping.section === section.section && mapping.subject_code === section.subject_code
       );
 
       if (!sectionMapping) {
@@ -121,7 +122,7 @@ const MarkAttendance = () => {
         `http://localhost:5000/api/students?department=${section.department}&semester=${section.semester}&academicYear=${sectionMapping.academic_year}`
       );
       const data = await studentsResponse.json();
-      
+
       if (!studentsResponse.ok) {
         if (studentsResponse.status === 404) {
           toast({
@@ -134,17 +135,17 @@ const MarkAttendance = () => {
         }
         throw new Error('Failed to fetch students');
       }
-      
+
       const studentsWithAttendance = data.students.map((student: Student) => ({
         ...student,
         present: false // Initialize all students as absent
       }));
-      
+
       setStudents(studentsWithAttendance);
-      
+
       toast({
         title: "Student data loaded",
-        description: `Loaded ${studentsWithAttendance.length} students for ${section.subject} - ${section.section}`,
+        description: `Loaded ${studentsWithAttendance.length} students for ${section.subject_name} - ${section.section}`,
       });
     } catch (error) {
       toast({
@@ -157,7 +158,7 @@ const MarkAttendance = () => {
       setIsLoadingStudents(false);
     }
   };
-  
+
   const handleSubmit = async () => {
     if (students.length === 0) {
       toast({
@@ -167,7 +168,7 @@ const MarkAttendance = () => {
       });
       return;
     }
-    
+
     const section = sections.find(s => s.id === selectedSection);
     if (!section) {
       toast({
@@ -179,12 +180,12 @@ const MarkAttendance = () => {
     }
 
     setLoading(true);
-    
+
     try {
       const attendanceData = {
         department: section.department,
         semester: section.semester,
-        subject: section.subject,
+        subject: section.subject_code,
         section: section.section,
         date: format(date!, 'yyyy-MM-dd'),
         records: students.map(student => ({
@@ -193,7 +194,7 @@ const MarkAttendance = () => {
           AcademicYear: student.AcademicYear
         }))
       };
-      
+
       const response = await fetch('http://localhost:5000/api/mark-attendance', {
         method: 'POST',
         headers: {
@@ -201,15 +202,15 @@ const MarkAttendance = () => {
         },
         body: JSON.stringify(attendanceData),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to submit attendance');
       }
-      
+
       setSubmitted(true);
       const presentCount = students.filter(s => s.present).length;
-      
+
       toast({
         title: "Attendance submitted successfully!",
         description: `Marked ${presentCount} students present out of ${students.length}`,
@@ -236,7 +237,7 @@ const MarkAttendance = () => {
 
   const handleCheckboxChange = (usn: string) => {
     setStudents(
-      students.map(student => 
+      students.map(student =>
         student.USN === usn ? { ...student, present: !student.present } : student
       )
     );
@@ -255,13 +256,13 @@ const MarkAttendance = () => {
         <h1 className="text-3xl font-bold tracking-tight">Mark Attendance</h1>
         <p className="text-muted-foreground">Record student attendance for your classes</p>
       </div>
-      
+
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle>Class Selection</CardTitle>
           <CardDescription>Select the class details to mark attendance</CardDescription>
         </CardHeader>
-        
+
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -273,13 +274,13 @@ const MarkAttendance = () => {
                 <SelectContent>
                   {sections.map((section) => (
                     <SelectItem key={section.id} value={section.id}>
-                      {section.subject} - {section.department} {section.semester} {section.section}
+                      {section.subject_name} - {section.department} {section.semester} {section.section}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="date">Date</Label>
               <Popover>
@@ -320,7 +321,7 @@ const MarkAttendance = () => {
                   'Load Students'
                 )}
               </Button>
-              
+
               {students.length > 0 && !submitted && (
                 <Button variant="outline" onClick={handleMarkAllPresent}>
                   Mark All Present

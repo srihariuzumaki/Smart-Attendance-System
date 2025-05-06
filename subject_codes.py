@@ -39,7 +39,14 @@ def parse_subject_codes(content: str) -> Dict[str, List[SubjectInfo]]:
                 current_scheme = scheme_match.group(1)
             continue
             
-        # Check for semester
+        # Check for semester header with scheme
+        sem_scheme_match = re.search(r'VTU CSE (\d+) Sem (\d{4}) scheme', line)
+        if sem_scheme_match:
+            current_semester = sem_scheme_match.group(1)
+            current_scheme = sem_scheme_match.group(2)
+            continue
+            
+        # Check for standalone semester
         semester_match = re.search(r'(\d+)\s*Semester', line)
         if semester_match:
             current_semester = semester_match.group(1)
@@ -52,30 +59,35 @@ def parse_subject_codes(content: str) -> Dict[str, List[SubjectInfo]]:
                 current_scheme = scheme_match.group(1)
             continue
             
-        # Parse subject entry
-        parts = line.split('\t')
-        if len(parts) >= 2 and (parts[0].startswith('B') or parts[0].startswith('21')):  # Handle both B* and 21* subject codes
-            subject_code = parts[0].strip()
-            subject_name = parts[1].strip()
-            
-            if current_semester and current_scheme:
-                # For 1st and 2nd semester, use group-based keys
-                if current_semester in ['1', '2'] and current_group:
-                    group_key = f"{current_semester}_{current_group}"
-                else:
-                    # For 3rd semester onwards, use just the semester as key
-                    group_key = current_semester
-                    
-                if group_key not in subjects_by_group:
-                    subjects_by_group[group_key] = []
-                    
-                subjects_by_group[group_key].append({
-                    "code": subject_code,
-                    "name": subject_name,
-                    "semester": current_semester,
-                    "scheme": current_scheme,
-                    "branch": "CSE"
-                })
+        # Parse subject entry - handle both tab-separated and space-separated formats
+        if line.startswith('B') or line.startswith('21'):  # Handle both B* and 21* subject codes
+            # Split by tabs first, if that doesn't work well, try splitting by multiple spaces
+            parts = line.split('\t')
+            if len(parts) < 2:
+                parts = re.split(r'\s{2,}', line)
+                
+            if len(parts) >= 2:
+                subject_code = parts[0].strip()
+                subject_name = parts[1].strip()
+                
+                if current_semester and current_scheme:
+                    # For 1st and 2nd semester, use group-based keys
+                    if current_semester in ['1', '2'] and current_group:
+                        group_key = f"{current_semester}_{current_group}"
+                    else:
+                        # For 3rd semester onwards, use just the semester as key
+                        group_key = current_semester
+                        
+                    if group_key not in subjects_by_group:
+                        subjects_by_group[group_key] = []
+                        
+                    subjects_by_group[group_key].append({
+                        "code": subject_code,
+                        "name": subject_name,
+                        "semester": current_semester,
+                        "scheme": current_scheme,
+                        "branch": "CS"  # Changed from CSE to CS to match the format in subcodes.md
+                    })
                 
     return subjects_by_group
 

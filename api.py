@@ -36,6 +36,91 @@ SUBJECT_CODES_FILE = os.path.join(os.path.dirname(__file__), 'subcodes.md')
 with open(SUBJECT_CODES_FILE, 'r') as f:
     SUBJECTS_DATA = parse_subject_codes(f.read())
 
+def migrate_database():
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Check if subject_name column exists in section_mapping
+            cursor.execute("PRAGMA table_info(section_mapping)")
+            columns = [col['name'] for col in cursor.fetchall()]
+            
+            if 'subject_name' not in columns:
+                print("Migrating section_mapping table...")
+                # Create temporary table with new schema
+                cursor.execute('''
+                    CREATE TABLE section_mapping_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        faculty_id TEXT NOT NULL,
+                        department TEXT NOT NULL,
+                        semester TEXT NOT NULL,
+                        section TEXT NOT NULL,
+                        subject_code TEXT NOT NULL,
+                        subject_name TEXT NOT NULL,
+                        academic_year TEXT NOT NULL,
+                        FOREIGN KEY (faculty_id) REFERENCES faculty(faculty_id),
+                        UNIQUE(department, semester, section, subject_code, academic_year)
+                    )
+                ''')
+                
+                # Copy data from old table to new table
+                cursor.execute('''
+                    INSERT INTO section_mapping_new 
+                    (faculty_id, department, semester, section, subject_code, subject_name, academic_year)
+                    SELECT faculty_id, department, semester, section, subject, subject, academic_year
+                    FROM section_mapping
+                ''')
+                
+                # Drop old table and rename new table
+                cursor.execute('DROP TABLE section_mapping')
+                cursor.execute('ALTER TABLE section_mapping_new RENAME TO section_mapping')
+                
+                print("Section mapping table migration completed")
+            
+            # Check if attendance table needs migration
+            cursor.execute("PRAGMA table_info(attendance)")
+            columns = [col['name'] for col in cursor.fetchall()]
+            
+            if 'subject_code' not in columns:
+                print("Migrating attendance table...")
+                # Create temporary table with new schema
+                cursor.execute('''
+                    CREATE TABLE attendance_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        USN TEXT NOT NULL,
+                        Date TEXT NOT NULL,
+                        subject_code TEXT NOT NULL,
+                        Present BOOLEAN NOT NULL,
+                        department TEXT NOT NULL,
+                        semester TEXT NOT NULL,
+                        section TEXT NOT NULL,
+                        AcademicYear TEXT NOT NULL,
+                        FOREIGN KEY (USN) REFERENCES students(USN),
+                        UNIQUE(USN, Date, subject_code, section)
+                    )
+                ''')
+                
+                # Copy data from old table to new table
+                cursor.execute('''
+                    INSERT INTO attendance_new 
+                    (USN, Date, subject_code, Present, department, semester, section, AcademicYear)
+                    SELECT USN, Date, Subject, Present, Department, Semester, Section, AcademicYear
+                    FROM attendance
+                ''')
+                
+                # Drop old table and rename new table
+                cursor.execute('DROP TABLE attendance')
+                cursor.execute('ALTER TABLE attendance_new RENAME TO attendance')
+                
+                print("Attendance table migration completed")
+            
+            conn.commit()
+            print("Database migration completed successfully")
+            
+    except Exception as e:
+        print(f"Error during migration: {e}")
+        raise
+
 def init_db():
     with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
@@ -74,10 +159,11 @@ def init_db():
                 department TEXT NOT NULL,
                 semester TEXT NOT NULL,
                 section TEXT NOT NULL,
-                subject TEXT NOT NULL,
+                subject_code TEXT NOT NULL,
+                subject_name TEXT NOT NULL,
                 academic_year TEXT NOT NULL,
                 FOREIGN KEY (faculty_id) REFERENCES faculty(faculty_id),
-                UNIQUE(department, semester, section, subject, academic_year)
+                UNIQUE(department, semester, section, subject_code, academic_year)
             )
         ''')
         
@@ -87,19 +173,22 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 USN TEXT NOT NULL,
                 Date TEXT NOT NULL,
-                Subject TEXT NOT NULL,
+                subject_code TEXT NOT NULL,
                 Present BOOLEAN NOT NULL,
-                Department TEXT NOT NULL,
-                Semester TEXT NOT NULL,
-                Section TEXT NOT NULL,
+                department TEXT NOT NULL,
+                semester TEXT NOT NULL,
+                section TEXT NOT NULL,
                 AcademicYear TEXT NOT NULL,
                 FOREIGN KEY (USN) REFERENCES students(USN),
-                UNIQUE(USN, Date, Subject, Section)
+                UNIQUE(USN, Date, subject_code, section)
             )
         ''')
         
         conn.commit()
         print("Database initialized successfully with all required tables and columns.")
+        
+    # Run migration after initialization
+    migrate_database()
 
 def verify_database():
     try:
@@ -464,7 +553,7 @@ def mark_attendance():
 
         department = data['department']
         semester = data['semester']
-        subject = data['subject']
+        subject_code = data['subject']  # This is now the subject_code
         section = data['section']
         attendance_date = data['date']
         records = data['records']
@@ -474,7 +563,7 @@ def mark_attendance():
         print(f"Time: {datetime.now()}")
         print(f"Department: {department}")
         print(f"Semester: {semester}")
-        print(f"Subject: {subject}")
+        print(f"Subject Code: {subject_code}")
         print(f"Section: {section}")
         print(f"Date: {attendance_date}")
         print(f"Number of records: {len(records)}")
@@ -493,12 +582,12 @@ def mark_attendance():
             cursor.execute('''
                 SELECT COUNT(*) as count
                 FROM attendance
-                WHERE Department = ?
-                AND Semester = ?
-                AND Subject = ?
-                AND Section = ?
+                WHERE department = ?
+                AND semester = ?
+                AND subject_code = ?
+                AND section = ?
                 AND Date = ?
-            ''', (department, semester, subject, section, attendance_date))
+            ''', (department, semester, subject_code, section, attendance_date))
             
             existing_count = cursor.fetchone()['count']
             print(f"Existing attendance records for this section: {existing_count}")
@@ -513,18 +602,18 @@ def mark_attendance():
                 FROM section_mapping
                 WHERE department = ?
                 AND semester = ?
-                AND subject = ?
+                AND subject_code = ?
                 AND section = ?
                 AND academic_year = (
                     SELECT MAX(academic_year)
                     FROM section_mapping
                     WHERE department = ?
                     AND semester = ?
-                    AND subject = ?
+                    AND subject_code = ?
                     AND section = ?
                 )
-            ''', (department, semester, subject, section,
-                 department, semester, subject, section))
+            ''', (department, semester, subject_code, section,
+                 department, semester, subject_code, section))
             
             result = cursor.fetchone()
             if not result:
@@ -548,11 +637,11 @@ def mark_attendance():
                 attendance_records.append({
                     'USN': record['USN'],
                     'Date': attendance_date,
-                    'Subject': subject,
+                    'subject_code': subject_code,
                     'Present': record['present'],
-                    'Department': department,
-                    'Semester': semester,
-                    'Section': section,
+                    'department': department,
+                    'semester': semester,
+                    'section': section,
                     'AcademicYear': academic_year
                 })
 
@@ -579,10 +668,10 @@ def mark_attendance():
                 
                 # Insert attendance records
                 cursor.executemany('''
-                    INSERT INTO attendance (USN, Date, Subject, Present, Department, Semester, Section, AcademicYear)
+                    INSERT INTO attendance (USN, Date, subject_code, Present, department, semester, section, AcademicYear)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', [(r['USN'], r['Date'], r['Subject'], r['Present'], 
-                      r['Department'], r['Semester'], r['Section'], r['AcademicYear']) 
+                ''', [(r['USN'], r['Date'], r['subject_code'], r['Present'], 
+                      r['department'], r['semester'], r['section'], r['AcademicYear']) 
                      for r in attendance_records])
                 
                 # Commit transaction
@@ -902,7 +991,7 @@ def manage_section_mapping():
         if not data:
             return jsonify({'error': 'No data provided'}), 400
 
-        required_fields = ['faculty_id', 'department', 'semester', 'section', 'subject', 'academic_year']
+        required_fields = ['faculty_id', 'department', 'semester', 'section', 'subject_code', 'subject_name', 'academic_year']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
@@ -917,10 +1006,10 @@ def manage_section_mapping():
 
                 cursor.execute('''
                     INSERT INTO section_mapping 
-                    (faculty_id, department, semester, section, subject, academic_year)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (faculty_id, department, semester, section, subject_code, subject_name, academic_year)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (data['faculty_id'], data['department'], data['semester'],
-                     data['section'], data['subject'], data['academic_year']))
+                     data['section'], data['subject_code'], data['subject_name'], data['academic_year']))
                 conn.commit()
                 return jsonify({'message': 'Section mapping added successfully'})
         except sqlite3.IntegrityError as e:
@@ -1015,8 +1104,8 @@ def get_faculty_subjects(faculty_id):
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT DISTINCT
-                    sm.subject as name,
-                    sm.subject as course_code,
+                    sm.subject_code as code,
+                    sm.subject_name as name,
                     sm.semester,
                     sm.department,
                     sm.section
@@ -1049,7 +1138,7 @@ def get_faculty_reports(faculty_id):
             
             # Base query for getting mapped subjects
             subject_query = '''
-                SELECT DISTINCT sm.subject, sm.section, sm.department, sm.semester
+                SELECT DISTINCT sm.subject_code, sm.subject_name, sm.section, sm.department, sm.semester
                 FROM section_mapping sm
                 WHERE sm.faculty_id = ?
                 AND sm.academic_year = (
@@ -1061,7 +1150,7 @@ def get_faculty_reports(faculty_id):
             
             # Add subject filter if specified
             if subject_filter != 'all':
-                subject_query += ' AND sm.subject = ?'
+                subject_query += ' AND sm.subject_code = ?'
                 cursor.execute(subject_query, (faculty_id, faculty_id, subject_filter))
             else:
                 cursor.execute(subject_query, (faculty_id, faculty_id))
@@ -1079,10 +1168,10 @@ def get_faculty_reports(faculty_id):
                         ROUND(AVG(CASE WHEN Present = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_attendance,
                         MAX(Date) as last_updated
                     FROM attendance
-                    WHERE Subject = ?
-                    AND Department = ?
-                    AND Semester = ?
-                ''', (subject_data['subject'], subject_data['department'], subject_data['semester']))
+                    WHERE subject_code = ?
+                    AND department = ?
+                    AND semester = ?
+                ''', (subject_data['subject_code'], subject_data['department'], subject_data['semester']))
                 
                 stats_row = cursor.fetchone()
                 if stats_row:
@@ -1095,21 +1184,21 @@ def get_faculty_reports(faculty_id):
                             s.Name,
                             COUNT(DISTINCT a.Date) as classes_attended,
                             (SELECT COUNT(DISTINCT Date) FROM attendance 
-                             WHERE Subject = ? AND Department = ? AND Semester = ?) as total_classes,
+                             WHERE subject_code = ? AND department = ? AND semester = ?) as total_classes,
                             ROUND(CAST(COUNT(CASE WHEN a.Present = 1 THEN 1 END) AS FLOAT) / 
                                   CAST(COUNT(DISTINCT a.Date) AS FLOAT) * 100, 2) as attendance_percentage
                         FROM students s
                         LEFT JOIN attendance a ON s.USN = a.USN 
-                            AND a.Subject = ? 
-                            AND a.Department = ? 
-                            AND a.Semester = ?
-                        WHERE s.Department = ?
-                            AND s.Semester = ?
+                            AND a.subject_code = ? 
+                            AND a.department = ? 
+                            AND a.semester = ?
+                        WHERE s.department = ?
+                            AND s.semester = ?
                         GROUP BY s.USN, s.Name
                         ORDER BY s.USN
                     ''', (
-                        subject_data['subject'], subject_data['department'], subject_data['semester'],
-                        subject_data['subject'], subject_data['department'], subject_data['semester'],
+                        subject_data['subject_code'], subject_data['department'], subject_data['semester'],
+                        subject_data['subject_code'], subject_data['department'], subject_data['semester'],
                         subject_data['department'], subject_data['semester']
                     ))
                     
@@ -1119,16 +1208,16 @@ def get_faculty_reports(faculty_id):
                     cursor.execute('''
                         SELECT DISTINCT Date
                         FROM attendance
-                        WHERE Subject = ?
-                        AND Department = ?
-                        AND Semester = ?
+                        WHERE subject_code = ?
+                        AND department = ?
+                        AND semester = ?
                         ORDER BY Date
-                    ''', (subject_data['subject'], subject_data['department'], subject_data['semester']))
+                    ''', (subject_data['subject_code'], subject_data['department'], subject_data['semester']))
                     
                     dates = [row['Date'] for row in cursor.fetchall()]
                     
                     reports.append({
-                        'subject_name': subject_data['subject'],
+                        'subject_name': subject_data['subject_name'],
                         'section': subject_data['section'],
                         'department': subject_data['department'],
                         'semester': subject_data['semester'],
@@ -1152,7 +1241,8 @@ def get_faculty_sections(faculty_id):
             cursor.execute('''
                 SELECT 
                     sm.id,
-                    sm.subject,
+                    sm.subject_code,
+                    sm.subject_name,
                     sm.section,
                     sm.department,
                     sm.semester
@@ -1163,7 +1253,7 @@ def get_faculty_sections(faculty_id):
                     FROM section_mapping 
                     WHERE faculty_id = ?
                 )
-                ORDER BY sm.subject, sm.section
+                ORDER BY sm.subject_code, sm.section
             ''', (faculty_id, faculty_id))
             
             sections = [dict(row) for row in cursor.fetchall()]
@@ -1191,9 +1281,9 @@ def get_attendance_report(faculty_id):
             cursor.execute('''
                 SELECT DISTINCT Date
                 FROM attendance
-                WHERE Subject = ?
-                AND Department = ?
-                AND Semester = ?
+                WHERE subject_code = ?
+                AND department = ?
+                AND semester = ?
                 AND Date BETWEEN ? AND ?
                 ORDER BY Date
             ''', (subject, department, semester, from_date, to_date))
@@ -1219,12 +1309,12 @@ def get_attendance_report(faculty_id):
                               CAST(COUNT(DISTINCT a.Date) AS FLOAT) * 100, 2) as attendance_percentage
                     FROM students s
                     LEFT JOIN attendance a ON s.USN = a.USN 
-                        AND a.Subject = ?
-                        AND a.Department = ?
-                        AND a.Semester = ?
+                        AND a.subject_code = ?
+                        AND a.department = ?
+                        AND a.semester = ?
                         AND a.Date BETWEEN ? AND ?
-                    WHERE s.Department = ?
-                        AND s.Semester = ?
+                    WHERE s.department = ?
+                        AND s.semester = ?
                     GROUP BY s.USN, s.Name
                 )
                 SELECT 
@@ -1234,9 +1324,9 @@ def get_attendance_report(faculty_id):
                     ) as attendance_dates
                 FROM StudentAttendance sa
                 LEFT JOIN attendance a ON sa.USN = a.USN 
-                    AND a.Subject = ?
-                    AND a.Department = ?
-                    AND a.Semester = ?
+                    AND a.subject_code = ?
+                    AND a.department = ?
+                    AND a.semester = ?
                     AND a.Date BETWEEN ? AND ?
                 GROUP BY sa.USN, sa.Name
                 ORDER BY sa.USN
@@ -1308,10 +1398,10 @@ def download_attendance_report():
             cursor.execute('''
                 SELECT DISTINCT Date 
                 FROM attendance 
-                WHERE Subject = ? 
-                AND Department = ? 
-                AND Semester = ? 
-                AND Section = ?
+                WHERE subject_code = ? 
+                AND department = ? 
+                AND semester = ? 
+                AND section = ?
                 AND Date BETWEEN ? AND ?
                 ORDER BY Date
             ''', (subject, department, semester, section, start_date, end_date))
@@ -1330,13 +1420,13 @@ def download_attendance_report():
                 FROM students s
                 LEFT JOIN attendance a ON s.USN = a.USN 
                     AND a.Date BETWEEN ? AND ?
-                    AND a.Subject = ?
-                    AND a.Department = ?
-                    AND a.Semester = ?
-                    AND a.Section = ?
-                WHERE s.Department = ?
-                    AND s.Semester = ?
-                    AND s.Section = ?
+                    AND a.subject_code = ?
+                    AND a.department = ?
+                    AND a.semester = ?
+                    AND a.section = ?
+                WHERE s.department = ?
+                    AND s.semester = ?
+                    AND s.section = ?
                 GROUP BY s.USN, s.Name
                 ORDER BY s.USN
             ''', (start_date, end_date, subject, department, semester, section,
@@ -1463,7 +1553,7 @@ def get_monthly_attendance_stats():
             cursor = conn.cursor()
             # Get total classes for the current month
             cursor.execute('''
-                SELECT COUNT(DISTINCT Date || Subject || Department || Semester || Section) as total_classes
+                SELECT COUNT(DISTINCT Date || subject_code || department || semester || section) as total_classes
                 FROM attendance
                 WHERE strftime('%Y-%m', Date) = strftime('%Y-%m', 'now')
             ''')
@@ -1483,10 +1573,10 @@ def get_weekly_reports_stats():
             cursor.execute('''
                 SELECT COUNT(*) as total_reports
                 FROM (
-                    SELECT DISTINCT Date, Subject, Department, Semester, Section
+                    SELECT DISTINCT Date, subject_code, department, semester, section
                     FROM attendance
                     WHERE Date >= date('now', '-7 days')
-                    GROUP BY Date, Subject, Department, Semester, Section
+                    GROUP BY Date, subject_code, department, semester, section
                 )
             ''')
             result = cursor.fetchone()
@@ -1503,7 +1593,7 @@ def get_all_subjects():
             cursor = conn.cursor()
             # Get total unique subjects from section mappings
             cursor.execute('''
-                SELECT COUNT(DISTINCT subject) as total_subjects
+                SELECT COUNT(DISTINCT subject_code) as total_subjects
                 FROM section_mapping
                 WHERE academic_year = (
                     SELECT MAX(academic_year)
@@ -1538,16 +1628,17 @@ def get_recent_activities():
             
             # Get recent attendance markings
             cursor.execute('''
-                SELECT 
+                SELECT DISTINCT
                     'Attendance Marked' as type,
-                    Subject || ' for ' || Department || ' ' || Semester || ' sem' as description,
-                    datetime(Date) as timestamp
-                FROM (
-                    SELECT DISTINCT Date, Subject, Department, Semester
-                    FROM attendance
-                    ORDER BY Date DESC
-                    LIMIT 3
-                )
+                    sm.subject_name || ' for ' || a.department || ' ' || a.semester || ' sem' as description,
+                    datetime(a.Date) as timestamp
+                FROM attendance a
+                JOIN section_mapping sm ON 
+                    a.subject_code = sm.subject_code 
+                    AND a.department = sm.department 
+                    AND a.semester = sm.semester
+                ORDER BY a.Date DESC
+                LIMIT 3
             ''')
             attendance_activities = [dict(row) for row in cursor.fetchall()]
             
@@ -1555,10 +1646,11 @@ def get_recent_activities():
             cursor.execute('''
                 SELECT 
                     'Subject Mapped' as type,
-                    subject || ' mapped to ' || department || ' ' || semester || ' sem' as description,
-                    datetime('now') as timestamp
-                FROM section_mapping
-                ORDER BY id DESC
+                    f.name || ' mapped to ' || sm.subject_name || ' (' || sm.department || ' ' || sm.semester || ' sem)' as description,
+                    datetime('now', '-' || sm.id || ' minutes') as timestamp
+                FROM section_mapping sm
+                JOIN faculty f ON sm.faculty_id = f.faculty_id
+                ORDER BY sm.id DESC
                 LIMIT 3
             ''')
             mapping_activities = [dict(row) for row in cursor.fetchall()]
@@ -1571,6 +1663,7 @@ def get_recent_activities():
                 'activities': sorted_activities[:5]  # Return only the 5 most recent activities
             })
     except Exception as e:
+        print(f"Error in get_recent_activities: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/faculty/<faculty_id>/dashboard', methods=['GET'])
@@ -1597,7 +1690,7 @@ def get_faculty_dashboard_stats(faculty_id):
             # Get total subjects for current academic year
             print("Getting total subjects...")
             cursor.execute('''
-                SELECT COUNT(DISTINCT subject) as total_subjects
+                SELECT COUNT(DISTINCT subject_code) as total_subjects
                 FROM section_mapping
                 WHERE faculty_id = ?
                 AND academic_year = (
@@ -1611,14 +1704,14 @@ def get_faculty_dashboard_stats(faculty_id):
             today = datetime.now().strftime('%Y-%m-%d')
             print(f"Getting today's classes for {today}...")
             cursor.execute('''
-                SELECT sm.subject, sm.department, sm.semester, sm.section,
+                SELECT sm.subject_name, sm.department, sm.semester, sm.section,
                     CASE 
                         WHEN EXISTS (
                             SELECT 1 FROM attendance a
-                            WHERE a.Subject = sm.subject 
-                            AND a.Department = sm.department
-                            AND a.Semester = sm.semester
-                            AND a.Section = sm.section
+                            WHERE a.subject_code = sm.subject_code 
+                            AND a.department = sm.department
+                            AND a.semester = sm.semester
+                            AND a.section = sm.section
                             AND a.Date = ?
                         ) THEN 'Completed'
                         ELSE 'Pending'
@@ -1636,14 +1729,14 @@ def get_faculty_dashboard_stats(faculty_id):
             print("Getting attendance stats...")
             cursor.execute('''
                 SELECT 
-                    COUNT(DISTINCT a.Date || a.Subject || a.Department || a.Semester || a.Section) as total,
-                    COUNT(DISTINCT CASE WHEN a.Date = ? THEN a.Date || a.Subject || a.Department || a.Semester || a.Section END) as today
+                    COUNT(DISTINCT a.Date || a.subject_code || a.department || a.semester || a.section) as total,
+                    COUNT(DISTINCT CASE WHEN a.Date = ? THEN a.Date || a.subject_code || a.department || a.semester || a.section END) as today
                 FROM attendance a
                 JOIN section_mapping sm ON 
-                    a.Subject = sm.subject 
-                    AND a.Department = sm.department
-                    AND a.Semester = sm.semester
-                    AND a.Section = sm.section
+                    a.subject_code = sm.subject_code 
+                    AND a.department = sm.department
+                    AND a.semester = sm.semester
+                    AND a.section = sm.section
                 WHERE sm.faculty_id = ?
                 AND strftime('%Y-%m', a.Date) = strftime('%Y-%m', 'now')
             ''', (today, faculty_id))
@@ -1656,18 +1749,18 @@ def get_faculty_dashboard_stats(faculty_id):
             cursor.execute('''
                 WITH SubjectAttendance AS (
                     SELECT 
-                        a.Subject,
+                        a.subject_code,
                         COUNT(CASE WHEN a.Present = 1 THEN 1 END) * 100.0 / COUNT(*) as attendance_percentage
                     FROM attendance a
                     JOIN section_mapping sm ON 
-                        a.Subject = sm.subject 
-                        AND a.Department = sm.department
-                        AND a.Semester = sm.semester
-                        AND a.Section = sm.section
+                        a.subject_code = sm.subject_code 
+                        AND a.department = sm.department
+                        AND a.semester = sm.semester
+                        AND a.section = sm.section
                     WHERE sm.faculty_id = ?
-                    GROUP BY a.Subject
+                    GROUP BY a.subject_code
                 )
-                SELECT Subject as subject, ROUND(attendance_percentage, 1) as attendance
+                SELECT subject_code as subject, ROUND(attendance_percentage, 1) as attendance
                 FROM SubjectAttendance
             ''', (faculty_id,))
             subject_attendance = [dict(row) for row in cursor.fetchall()]
@@ -1678,18 +1771,18 @@ def get_faculty_dashboard_stats(faculty_id):
             cursor.execute('''
                 WITH RecentClasses AS (
                     SELECT 
-                        a.Subject || ' - ' || a.Department || a.Semester || a.Section as name,
+                        a.subject_code || ' - ' || a.department || a.semester || a.section as name,
                         a.Date,
                         COUNT(CASE WHEN a.Present = 1 THEN 1 END) as present,
                         COUNT(CASE WHEN a.Present = 0 THEN 1 END) as absent
                     FROM attendance a
                     JOIN section_mapping sm ON 
-                        a.Subject = sm.subject 
-                        AND a.Department = sm.department
-                        AND a.Semester = sm.semester
-                        AND a.Section = sm.section
+                        a.subject_code = sm.subject_code 
+                        AND a.department = sm.department
+                        AND a.semester = sm.semester
+                        AND a.section = sm.section
                     WHERE sm.faculty_id = ?
-                    GROUP BY a.Subject, a.Department, a.Semester, a.Section, a.Date
+                    GROUP BY a.subject_code, a.department, a.semester, a.section, a.Date
                     ORDER BY a.Date DESC
                     LIMIT 5
                 )
