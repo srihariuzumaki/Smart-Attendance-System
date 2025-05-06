@@ -11,6 +11,8 @@ import { format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import ThemeToggle from "../layout/ThemeToggle";
+import { CardSpotlight } from "@/components/ui/card-spotlight";
+import { CanvasRevealEffect } from "@/components/ui/canvas-reveal-effect";
 
 const LoginForm = () => {
   const navigate = useNavigate();
@@ -89,17 +91,56 @@ const LoginForm = () => {
   };
 
   return (
-    <div className="w-full flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-background to-secondary/20 p-4">
-      <div className="absolute top-4 right-4">
+    <div className="w-full flex flex-col items-center justify-center min-h-screen relative overflow-hidden">
+      {/* Background with Effects */}
+      <CardSpotlight
+        className="absolute inset-0 border-0"
+        radius={500}
+        color="rgba(59, 130, 246, 0.25)"
+      >
+        {/* Background Image with Overlay */}
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20 transition-opacity duration-500 hover:opacity-30"
+          style={{
+            backgroundImage: 'url("/college-bg.jpg")',
+            backgroundBlendMode: 'overlay'
+          }}
+        />
+
+        {/* Gradient Background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background/90 to-secondary/30" />
+
+        {/* Particle Effect */}
+        <CanvasRevealEffect
+          animationSpeed={2}
+          containerClassName="absolute inset-0"
+          colors={[
+            [59, 130, 246],  // Blue
+            [139, 92, 246],  // Purple
+            [255, 255, 255], // White
+          ]}
+          dotSize={2}
+        />
+      </CardSpotlight>
+
+      <div className="absolute top-4 right-4 z-10">
         <ThemeToggle />
       </div>
 
-      <div className="max-w-md w-full">
-        <div className="text-center mb-6 animate-fade-in">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Attend<span className="text-primary">Sync</span>
-          </h1>
-          <p className="text-muted-foreground mt-1">College Attendance Management System</p>
+      {/* Login Form */}
+      <Card className="max-w-md w-full bg-background/80 backdrop-blur-sm z-10 p-6">
+        <div className="text-center mb-8 animate-fade-in space-y-4">
+          <div className="mx-auto max-w-[90%]">
+            <h1 className="text-xl font-bold tracking-tight whites">
+              Proudhadevaraya Institute of Technology-Hospet
+            </h1>
+          </div>
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">
+              Attend<span className="text-primary">Sync</span>
+            </h2>
+            <p className="text-muted-foreground mt-1">College Attendance Management System</p>
+          </div>
         </div>
 
         <Tabs defaultValue="student" className="w-full" onValueChange={(value) => setUserType(value as "student" | "faculty" | "admin")}>
@@ -274,7 +315,7 @@ const LoginForm = () => {
             </Card>
           </div>
         </Tabs>
-      </div>
+      </Card>
     </div>
   );
 };
