@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,15 +10,47 @@ import { format } from "date-fns";
 import { Calendar as CalendarIcon, Download, FileDown, Filter, FileSpreadsheet } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+interface Subject {
+  code: string;
+  name: string;
+  semester: string;
+  scheme: string;
+  branch: string;
+}
+
 const ViewReports = () => {
   const [reportType, setReportType] = useState("format1");
   const [department, setDepartment] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [semester, setSemester] = useState("");
   const [subject, setSubject] = useState("");
+  const [group, setGroup] = useState<string>("cse_physics");
+  const [scheme, setScheme] = useState<string>("2022");
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
-  
+
+  useEffect(() => {
+    if (department && semester) {
+      // Fetch subjects for the selected department, semester, and scheme
+      const url = ['1', '2'].includes(semester)
+        ? `http://localhost:5000/api/subjects/${department}?semester=${semester}&group=${group}&scheme=${scheme}`
+        : `http://localhost:5000/api/subjects/${department}?semester=${semester}&scheme=${scheme}`;
+
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          setSubjects(data || []);
+        })
+        .catch(error => {
+          console.error('Error fetching subjects:', error);
+          setSubjects([]);
+        });
+    } else {
+      setSubjects([]);
+    }
+  }, [department, semester, group, scheme]);
+
   const handleGenerateReport = () => {
     // In a real app, this would generate a report based on the selected filters
     console.log("Generate report with filters:", {
@@ -39,15 +70,31 @@ const ViewReports = () => {
         <h1 className="text-3xl font-bold tracking-tight">View Reports</h1>
         <p className="text-muted-foreground">Generate and download attendance reports</p>
       </div>
-      
+
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle>Report Filters</CardTitle>
           <CardDescription>Select filters to generate attendance reports</CardDescription>
         </CardHeader>
-        
+
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="scheme">Scheme</Label>
+              <Select value={scheme} onValueChange={(value) => {
+                setScheme(value);
+                setSubject(""); // Reset selected subject when scheme changes
+              }}>
+                <SelectTrigger id="scheme">
+                  <SelectValue placeholder="Select Scheme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2022">2022 Scheme</SelectItem>
+                  <SelectItem value="2021">2021 Scheme</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="department">Department</Label>
               <Select value={department} onValueChange={setDepartment}>
@@ -63,7 +110,7 @@ const ViewReports = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="academic-year">Academic Year</Label>
               <Select value={academicYear} onValueChange={setAcademicYear}>
@@ -76,10 +123,17 @@ const ViewReports = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="semester">Semester</Label>
-              <Select value={semester} onValueChange={setSemester}>
+              <Select value={semester} onValueChange={(value) => {
+                setSemester(value);
+                // Reset group if semester is not 1 or 2
+                if (!['1', '2'].includes(value)) {
+                  setGroup('cse_physics');
+                }
+                setSubject(""); // Reset selected subject when semester changes
+              }}>
                 <SelectTrigger id="semester">
                   <SelectValue placeholder="Select Semester" />
                 </SelectTrigger>
@@ -95,7 +149,22 @@ const ViewReports = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
+            {['1', '2'].includes(semester) && (
+              <div className="space-y-2">
+                <Label htmlFor="group">Group</Label>
+                <Select value={group} onValueChange={setGroup}>
+                  <SelectTrigger id="group">
+                    <SelectValue placeholder="Select Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cse_physics">CSE Physics Group</SelectItem>
+                    <SelectItem value="cse_chemistry">CSE Chemistry Group</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="subject">Subject</Label>
               <Select value={subject} onValueChange={setSubject}>
@@ -103,15 +172,15 @@ const ViewReports = () => {
                   <SelectValue placeholder="Select Subject" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="dsa">Data Structures & Algorithms</SelectItem>
-                  <SelectItem value="dbms">Database Management Systems</SelectItem>
-                  <SelectItem value="os">Operating Systems</SelectItem>
-                  <SelectItem value="cn">Computer Networks</SelectItem>
-                  <SelectItem value="se">Software Engineering</SelectItem>
+                  {subjects.map((subj) => (
+                    <SelectItem key={subj.code} value={subj.code}>
+                      {subj.name} ({subj.code})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="from-date">From Date</Label>
               <Popover>
@@ -135,7 +204,7 @@ const ViewReports = () => {
                 </PopoverContent>
               </Popover>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="to-date">To Date</Label>
               <Popover>
@@ -161,7 +230,7 @@ const ViewReports = () => {
               </Popover>
             </div>
           </div>
-          
+
           <div className="mt-4 flex justify-center">
             <Button onClick={handleGenerateReport} className="gap-2">
               <Filter className="h-4 w-4" />
@@ -170,7 +239,7 @@ const ViewReports = () => {
           </div>
         </CardContent>
       </Card>
-      
+
       <Card className="shadow-md">
         <CardHeader>
           <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -190,14 +259,14 @@ const ViewReports = () => {
             </div>
           </div>
         </CardHeader>
-        
+
         <CardContent>
           <Tabs defaultValue="format1" onValueChange={setReportType} className="w-full">
             <TabsList className="grid grid-cols-2 mb-6">
               <TabsTrigger value="format1">Report Format 1</TabsTrigger>
               <TabsTrigger value="format2">Report Format 2</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="format1">
               <Table>
                 <TableHeader>
@@ -248,7 +317,7 @@ const ViewReports = () => {
                 </TableBody>
               </Table>
             </TabsContent>
-            
+
             <TabsContent value="format2">
               <Table>
                 <TableHeader>
@@ -319,7 +388,7 @@ const ViewReports = () => {
             </TabsContent>
           </Tabs>
         </CardContent>
-        
+
         <CardFooter className="flex justify-center border-t pt-4">
           <div className="flex gap-2">
             <Button variant="outline">Previous</Button>

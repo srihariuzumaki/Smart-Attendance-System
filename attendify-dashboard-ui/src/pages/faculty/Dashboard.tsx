@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Calendar, BookOpen, BarChart, CheckCircle2, Upload } from "lucide-react";
+import { Calendar, BookOpen, BarChart, CheckCircle2, Upload, Loader2 } from "lucide-react";
 import {
   BarChart as RechartBarChart,
   Bar,
@@ -13,28 +13,93 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useToast } from "@/components/ui/use-toast";
 
-const subjectAttendanceData = [
-  { subject: "Data Structures", attendance: 87 },
-  { subject: "Database Systems", attendance: 75 },
-  { subject: "Computer Networks", attendance: 82 },
-  { subject: "Operating Systems", attendance: 68 },
-];
-
-const classData = [
-  { name: "CSE-3A", present: 42, absent: 8 },
-  { name: "CSE-4B", present: 38, absent: 12 },
-  { name: "IT-3A", present: 45, absent: 5 },
-];
+interface DashboardData {
+  faculty_name: string;
+  department: string;
+  total_subjects: number;
+  todays_classes: {
+    subject: string;
+    section: string;
+    department: string;
+    semester: string;
+    status: string;
+  }[];
+  attendance_marked: {
+    total: number;
+    today: number;
+  };
+  subject_attendance: {
+    subject: string;
+    attendance: number;
+  }[];
+  recent_classes: {
+    name: string;
+    present: number;
+    absent: number;
+  }[];
+}
 
 const FacultyDashboard = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<DashboardData | null>(null);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        // Get faculty ID from local storage or context
+        const facultyId = localStorage.getItem('facultyId');
+        if (!facultyId) {
+          throw new Error('Faculty ID not found');
+        }
+
+        const response = await fetch(`http://localhost:5000/api/faculty/${facultyId}/dashboard`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard data');
+        }
+
+        const dashboardData = await response.json();
+        setData(dashboardData);
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load dashboard data"
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p>Failed to load dashboard data</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Welcome, Dr. Sharma</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Welcome, {data.faculty_name}</h1>
           <p className="text-muted-foreground">Faculty Dashboard</p>
         </div>
         <div className="flex items-center gap-2">
@@ -53,7 +118,7 @@ const FacultyDashboard = () => {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4</div>
+            <div className="text-2xl font-bold">{data.total_subjects}</div>
             <p className="text-xs text-muted-foreground">Current semester subjects</p>
           </CardContent>
         </Card>
@@ -63,8 +128,12 @@ const FacultyDashboard = () => {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">Upcoming: CSE-3A at 11:00 AM</p>
+            <div className="text-2xl font-bold">{data.todays_classes.length}</div>
+            {data.todays_classes[0] && (
+              <p className="text-xs text-muted-foreground">
+                Next: {data.todays_classes[0].subject} - {data.todays_classes[0].section}
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card className="interactive-card">
@@ -73,7 +142,7 @@ const FacultyDashboard = () => {
             <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">22/30</div>
+            <div className="text-2xl font-bold">{data.attendance_marked.total}</div>
             <p className="text-xs text-muted-foreground">This month</p>
           </CardContent>
         </Card>
@@ -83,7 +152,11 @@ const FacultyDashboard = () => {
             <BarChart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">78.6%</div>
+            <div className="text-2xl font-bold">
+              {data.subject_attendance.length > 0
+                ? (data.subject_attendance.reduce((sum, subj) => sum + subj.attendance, 0) / data.subject_attendance.length).toFixed(1)
+                : 0}%
+            </div>
             <p className="text-xs text-muted-foreground">Across all subjects</p>
           </CardContent>
         </Card>
@@ -97,39 +170,26 @@ const FacultyDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium">Database Management Systems</h3>
-                  <p className="text-sm text-muted-foreground">CSE-3A (Room 305)</p>
+              {data.todays_classes.map((cls, index) => (
+                <div key={index} className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">{cls.subject}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {cls.department.toUpperCase()}-{cls.semester}{cls.section}
+                    </p>
+                  </div>
+                  <div className="bg-secondary text-secondary-foreground rounded-md px-2 py-1 text-sm">
+                    {cls.status}
+                  </div>
                 </div>
-                <div className="bg-secondary text-secondary-foreground rounded-md px-2 py-1 text-sm">
-                  11:00 AM - 12:00 PM
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium">Data Structures</h3>
-                  <p className="text-sm text-muted-foreground">IT-2B (Room 205)</p>
-                </div>
-                <div className="bg-secondary text-secondary-foreground rounded-md px-2 py-1 text-sm">
-                  1:30 PM - 2:30 PM
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium">Computer Networks</h3>
-                  <p className="text-sm text-muted-foreground">CSE-4B (Room 402)</p>
-                </div>
-                <div className="bg-secondary text-secondary-foreground rounded-md px-2 py-1 text-sm">
-                  3:00 PM - 4:00 PM
-                </div>
-              </div>
+              ))}
+              {data.todays_classes.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">No classes scheduled for today</p>
+              )}
             </div>
           </CardContent>
         </Card>
-        
+
         <Card className="interactive-card">
           <CardHeader>
             <CardTitle>Subject Attendance</CardTitle>
@@ -137,7 +197,7 @@ const FacultyDashboard = () => {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <RechartBarChart data={subjectAttendanceData}>
+              <RechartBarChart data={data.subject_attendance}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="subject" />
                 <YAxis />
@@ -148,7 +208,7 @@ const FacultyDashboard = () => {
           </CardContent>
         </Card>
       </div>
-      
+
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="interactive-card">
           <CardHeader>
@@ -157,7 +217,7 @@ const FacultyDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {classData.map((cls, index) => (
+              {data.recent_classes.map((cls, index) => (
                 <div key={index} className="space-y-2">
                   <div className="flex justify-between">
                     <span className="font-medium">{cls.name}</span>
@@ -168,10 +228,13 @@ const FacultyDashboard = () => {
                   <Progress value={(cls.present / (cls.present + cls.absent)) * 100} className="h-2" />
                 </div>
               ))}
+              {data.recent_classes.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">No recent classes found</p>
+              )}
             </div>
           </CardContent>
         </Card>
-        
+
         <Card className="interactive-card">
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
@@ -179,17 +242,17 @@ const FacultyDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="h-20 flex flex-col items-center justify-center gap-1"
                 onClick={() => navigate("/faculty/mark-attendance")}
               >
                 <Calendar className="h-5 w-5" />
                 <span>Mark Attendance</span>
               </Button>
-              
-              <Button 
-                variant="outline" 
+
+              <Button
+                variant="outline"
                 className="h-20 flex flex-col items-center justify-center gap-1"
                 onClick={() => navigate("/faculty/reports")}
               >
@@ -197,17 +260,17 @@ const FacultyDashboard = () => {
                 <span>View Reports</span>
               </Button>
 
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="h-20 flex flex-col items-center justify-center gap-1"
                 onClick={() => navigate("/faculty/my-subjects")}
               >
                 <BookOpen className="h-5 w-5" />
                 <span>My Subjects</span>
               </Button>
-              
-              <Button 
-                variant="outline" 
+
+              <Button
+                variant="outline"
                 className="h-20 flex flex-col items-center justify-center gap-1"
                 onClick={() => navigate("/faculty/upload")}
               >

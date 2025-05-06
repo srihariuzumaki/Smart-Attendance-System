@@ -17,6 +17,14 @@ interface Faculty {
   joining_date: string;
 }
 
+interface Subject {
+  code: string;
+  name: string;
+  semester: string;
+  scheme: string;
+  branch: string;
+}
+
 const AddFacultyDialog = ({ department, onFacultyAdded }: { department: string, onFacultyAdded: () => void }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -170,14 +178,14 @@ const AddFacultyDialog = ({ department, onFacultyAdded }: { department: string, 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              <Button 
-                type="button" 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 className="absolute right-1 top-1"
                 onClick={() => setShowPassword(!showPassword)}
               >
-                {showPassword ? 
+                {showPassword ?
                   <EyeOff className="h-4 w-4 text-muted-foreground" /> :
                   <Eye className="h-4 w-4 text-muted-foreground" />
                 }
@@ -215,10 +223,12 @@ const MapFaculty = () => {
   const [subject, setSubject] = useState("");
   const [facultyId, setFacultyId] = useState("");
   const [facultyList, setFacultyList] = useState<Faculty[]>([]);
-  const [subjects, setSubjects] = useState<string[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [group, setGroup] = useState<string>("cse_physics");
+  const [scheme, setScheme] = useState<string>("2022");
 
   useEffect(() => {
-    if (department) {
+    if (department && semester) {
       // Fetch faculty list for the selected department
       fetch(`http://localhost:5000/api/faculty?department=${department}`)
         .then(res => res.json())
@@ -235,8 +245,12 @@ const MapFaculty = () => {
           setFacultyList([]);
         });
 
-      // Fetch subjects for the selected department
-      fetch(`http://localhost:5000/api/subjects/${department}`)
+      // Fetch subjects for the selected department, semester, and scheme
+      const url = ['1', '2'].includes(semester)
+        ? `http://localhost:5000/api/subjects/${department}?semester=${semester}&group=${group}&scheme=${scheme}`
+        : `http://localhost:5000/api/subjects/${department}?semester=${semester}&scheme=${scheme}`;
+
+      fetch(url)
         .then(res => res.json())
         .then(data => {
           setSubjects(data || []);
@@ -254,7 +268,7 @@ const MapFaculty = () => {
       setFacultyList([]);
       setSubjects([]);
     }
-  }, [department]);
+  }, [department, semester, group, scheme]);
 
   const handleMapFaculty = async () => {
     if (!facultyId || !department || !semester || !section || !subject || !academicYear) {
@@ -318,13 +332,13 @@ const MapFaculty = () => {
         <h1 className="text-3xl font-bold tracking-tight">Map Faculty</h1>
         <p className="text-muted-foreground">Assign faculty members to specific courses and sections</p>
       </div>
-      
+
       <Card className="max-w-3xl mx-auto shadow-md hover:shadow-lg transition-shadow duration-300">
         <CardHeader>
           <CardTitle>Faculty Assignment</CardTitle>
           <CardDescription>Map faculty to departments, courses, and sections</CardDescription>
         </CardHeader>
-        
+
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -340,7 +354,23 @@ const MapFaculty = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
+            <div className="space-y-2">
+              <Label htmlFor="scheme">Scheme</Label>
+              <Select value={scheme} onValueChange={(value) => {
+                setScheme(value);
+                setSubject("");
+              }}>
+                <SelectTrigger id="scheme">
+                  <SelectValue placeholder="Select Scheme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2022">2022 Scheme</SelectItem>
+                  <SelectItem value="2021">2021 Scheme</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="department">Department</Label>
               <Select value={department} onValueChange={setDepartment}>
@@ -355,10 +385,17 @@ const MapFaculty = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="semester">Semester</Label>
-              <Select value={semester} onValueChange={setSemester}>
+              <Select value={semester} onValueChange={(value) => {
+                setSemester(value);
+                // Reset group if semester is not 1 or 2
+                if (!['1', '2'].includes(value)) {
+                  setGroup('cse_physics');
+                }
+                setSubject("");
+              }}>
                 <SelectTrigger id="semester">
                   <SelectValue placeholder="Select Semester" />
                 </SelectTrigger>
@@ -374,7 +411,7 @@ const MapFaculty = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="section">Section</Label>
               <Select value={section} onValueChange={setSection}>
@@ -390,7 +427,23 @@ const MapFaculty = () => {
               </Select>
             </div>
           </div>
-          
+
+          {/* Show group selection only for 1st and 2nd semesters */}
+          {['1', '2'].includes(semester) && (
+            <div className="space-y-2">
+              <Label htmlFor="group">Group</Label>
+              <Select value={group} onValueChange={setGroup}>
+                <SelectTrigger id="group">
+                  <SelectValue placeholder="Select Group" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cse_physics">CSE Physics Group</SelectItem>
+                  <SelectItem value="cse_chemistry">CSE Chemistry Group</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="subject">Subject</Label>
             <Select value={subject} onValueChange={setSubject}>
@@ -399,12 +452,14 @@ const MapFaculty = () => {
               </SelectTrigger>
               <SelectContent>
                 {subjects.map((subj) => (
-                  <SelectItem key={subj} value={subj}>{subj}</SelectItem>
+                  <SelectItem key={subj.code} value={subj.code}>
+                    {subj.name} ({subj.code})
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="faculty">Faculty</Label>
             <div className="flex items-center gap-2">
@@ -441,10 +496,10 @@ const MapFaculty = () => {
             </div>
           </div>
         </CardContent>
-        
+
         <CardFooter>
-          <Button 
-            onClick={handleMapFaculty} 
+          <Button
+            onClick={handleMapFaculty}
             disabled={loading}
             className="w-full transition-all duration-300 hover:scale-[1.02]"
           >

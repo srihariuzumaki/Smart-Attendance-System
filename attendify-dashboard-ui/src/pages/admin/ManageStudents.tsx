@@ -104,7 +104,7 @@ const ManageStudents = () => {
       'application/vnd.ms-excel', // .xls
       'text/csv' // .csv
     ];
-    
+
     if (!validTypes.includes(file.type)) {
       toast({
         variant: "destructive",
@@ -198,7 +198,7 @@ const ManageStudents = () => {
 
       toast({
         title: "Upload Successful",
-        description: `Successfully uploaded ${data.students.length} students`,
+        description: `Successfully uploaded ${data.count} students`,
       });
 
       // Reset states
@@ -207,6 +207,7 @@ const ManageStudents = () => {
       setValidationErrors([]);
       setUploadProgress(100);
     } catch (error) {
+      console.error('Upload error:', error);
       toast({
         variant: "destructive",
         title: "Upload Failed",
@@ -221,10 +222,10 @@ const ManageStudents = () => {
     // Create template CSV content with example data
     const headers = ["USN", "Name", "Department", "Semester", "AcademicYear"];
     const exampleRow = ["1XY21CS001", "John Doe", "CSE", "6", "2023-24"];
-    const csvContent = "data:text/csv;charset=utf-8," + 
+    const csvContent = "data:text/csv;charset=utf-8," +
       headers.join(",") + "\n" +
       exampleRow.join(",");
-    
+
     // Create download link
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -292,9 +293,8 @@ const ManageStudents = () => {
 
             {/* File Upload Area */}
             <div
-              className={`border-2 border-dashed rounded-lg p-8 text-center ${
-                dragActive ? "border-primary" : "border-muted-foreground/25"
-              }`}
+              className={`border-2 border-dashed rounded-lg p-8 text-center ${dragActive ? "border-primary" : "border-muted-foreground/25"
+                }`}
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
               onDragOver={handleDrag}

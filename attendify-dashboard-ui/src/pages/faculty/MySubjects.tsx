@@ -15,7 +15,7 @@ import {
 interface Subject {
   subject_id: string;
   name: string;
-  course_code: string;
+  code: string;
   semester: number;
   department: string;
   section: string;
@@ -31,7 +31,7 @@ const MySubjects = () => {
     try {
       // Get faculty ID from local storage
       const facultyId = localStorage.getItem("facultyId");
-      
+
       if (!facultyId) {
         toast({
           title: "Error",
@@ -89,7 +89,7 @@ const MySubjects = () => {
             <TableBody>
               {subjects.map((subject) => (
                 <TableRow key={subject.subject_id}>
-                  <TableCell>{subject.course_code}</TableCell>
+                  <TableCell>{subject.code}</TableCell>
                   <TableCell>{subject.name}</TableCell>
                   <TableCell className="capitalize">{subject.department}</TableCell>
                   <TableCell>{subject.section}</TableCell>

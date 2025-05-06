@@ -9,11 +9,12 @@ from contextlib import contextmanager
 import hashlib
 import re
 import xlsxwriter  # Add this import
+from subject_codes import parse_subject_codes, get_subjects_for_semester
 
 app = Flask(__name__)
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:8080"],
+        "origins": ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
         "supports_credentials": True
@@ -29,6 +30,11 @@ DEPARTMENT_SUBJECTS = {
 }
 
 DATABASE_FILE = 'attendance.db'
+
+# Load subject codes from file
+SUBJECT_CODES_FILE = os.path.join(os.path.dirname(__file__), 'subcodes.md')
+with open(SUBJECT_CODES_FILE, 'r') as f:
+    SUBJECTS_DATA = parse_subject_codes(f.read())
 
 def init_db():
     with sqlite3.connect(DATABASE_FILE) as conn:
@@ -159,7 +165,25 @@ def get_departments():
 
 @app.route('/api/subjects/<department>', methods=['GET'])
 def get_subjects(department):
-    return jsonify(DEPARTMENT_SUBJECTS.get(department, []))
+    semester = request.args.get('semester')
+    group = request.args.get('group', 'cse_physics')  # Default to physics group
+    scheme = request.args.get('scheme', '2022')  # Default to 2022 scheme
+    
+    if not semester:
+        return jsonify([])
+    
+    try:
+        subjects = get_subjects_for_semester(semester, group, SUBJECTS_DATA, scheme)
+        return jsonify([{
+            'code': subject['code'],
+            'name': subject['name'],
+            'semester': subject['semester'],
+            'scheme': subject['scheme'],
+            'branch': subject['branch']
+        } for subject in subjects])
+    except Exception as e:
+        print(f"Error fetching subjects: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 def validate_student_data(df, section_mapping=None):
     errors = []
@@ -810,7 +834,15 @@ def manage_faculty():
                 else:
                     cursor.execute('SELECT * FROM faculty')
                 faculty = [dict(row) for row in cursor.fetchall()]
-                return jsonify({'faculty': faculty})
+                
+                # Get total count of faculty
+                cursor.execute('SELECT COUNT(*) as total FROM faculty')
+                total = cursor.fetchone()['total']
+                
+                return jsonify({
+                    'faculty': faculty,
+                    'total': total
+                })
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
@@ -962,7 +994,7 @@ def faculty_login():
                     return jsonify({
                         'message': 'Login successful',
                         'faculty': {
-                            'id': faculty['faculty_id'],
+                            'faculty_id': faculty['faculty_id'],
                             'name': faculty['name'],
                             'email': faculty['email'],
                             'department': faculty['department'],
@@ -1423,6 +1455,267 @@ def download_attendance_report():
         import traceback
         traceback.print_exc()  # Print full traceback for debugging
         return jsonify({'error': f'Failed to generate report download: {str(e)}'}), 500
+
+@app.route('/api/attendance/stats/monthly', methods=['GET'])
+def get_monthly_attendance_stats():
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            # Get total classes for the current month
+            cursor.execute('''
+                SELECT COUNT(DISTINCT Date || Subject || Department || Semester || Section) as total_classes
+                FROM attendance
+                WHERE strftime('%Y-%m', Date) = strftime('%Y-%m', 'now')
+            ''')
+            result = cursor.fetchone()
+            return jsonify({
+                'total_classes': result['total_classes'] if result else 0
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reports/stats/weekly', methods=['GET'])
+def get_weekly_reports_stats():
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            # Get total reports generated in the last 7 days
+            cursor.execute('''
+                SELECT COUNT(*) as total_reports
+                FROM (
+                    SELECT DISTINCT Date, Subject, Department, Semester, Section
+                    FROM attendance
+                    WHERE Date >= date('now', '-7 days')
+                    GROUP BY Date, Subject, Department, Semester, Section
+                )
+            ''')
+            result = cursor.fetchone()
+            return jsonify({
+                'total_reports': result['total_reports'] if result else 0
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/subjects/all', methods=['GET'])
+def get_all_subjects():
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            # Get total unique subjects from section mappings
+            cursor.execute('''
+                SELECT COUNT(DISTINCT subject) as total_subjects
+                FROM section_mapping
+                WHERE academic_year = (
+                    SELECT MAX(academic_year)
+                    FROM section_mapping
+                )
+            ''')
+            result = cursor.fetchone()
+            return jsonify({
+                'total': result['total_subjects'] if result else 0,
+                'subjects': list(DEPARTMENT_SUBJECTS.values())
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/activities/recent', methods=['GET'])
+def get_recent_activities():
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Get recent faculty additions
+            cursor.execute('''
+                SELECT 
+                    'Faculty Added' as type,
+                    name || ' added to ' || department as description,
+                    datetime(joining_date) as timestamp
+                FROM faculty
+                ORDER BY joining_date DESC
+                LIMIT 3
+            ''')
+            faculty_activities = [dict(row) for row in cursor.fetchall()]
+            
+            # Get recent attendance markings
+            cursor.execute('''
+                SELECT 
+                    'Attendance Marked' as type,
+                    Subject || ' for ' || Department || ' ' || Semester || ' sem' as description,
+                    datetime(Date) as timestamp
+                FROM (
+                    SELECT DISTINCT Date, Subject, Department, Semester
+                    FROM attendance
+                    ORDER BY Date DESC
+                    LIMIT 3
+                )
+            ''')
+            attendance_activities = [dict(row) for row in cursor.fetchall()]
+            
+            # Get recent section mappings
+            cursor.execute('''
+                SELECT 
+                    'Subject Mapped' as type,
+                    subject || ' mapped to ' || department || ' ' || semester || ' sem' as description,
+                    datetime('now') as timestamp
+                FROM section_mapping
+                ORDER BY id DESC
+                LIMIT 3
+            ''')
+            mapping_activities = [dict(row) for row in cursor.fetchall()]
+            
+            # Combine all activities and sort by timestamp
+            all_activities = faculty_activities + attendance_activities + mapping_activities
+            sorted_activities = sorted(all_activities, key=lambda x: x['timestamp'], reverse=True)
+            
+            return jsonify({
+                'activities': sorted_activities[:5]  # Return only the 5 most recent activities
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/faculty/<faculty_id>/dashboard', methods=['GET'])
+def get_faculty_dashboard_stats(faculty_id):
+    try:
+        print(f"\nFetching dashboard stats for faculty: {faculty_id}")
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Get faculty details
+            print("Getting faculty details...")
+            cursor.execute('''
+                SELECT name, department
+                FROM faculty
+                WHERE faculty_id = ?
+            ''', (faculty_id,))
+            faculty = cursor.fetchone()
+            if not faculty:
+                print(f"Faculty not found: {faculty_id}")
+                return jsonify({'error': 'Faculty not found'}), 404
+            
+            print(f"Found faculty: {dict(faculty)}")
+            
+            # Get total subjects for current academic year
+            print("Getting total subjects...")
+            cursor.execute('''
+                SELECT COUNT(DISTINCT subject) as total_subjects
+                FROM section_mapping
+                WHERE faculty_id = ?
+                AND academic_year = (
+                    SELECT MAX(academic_year) FROM section_mapping
+                )
+            ''', (faculty_id,))
+            total_subjects = cursor.fetchone()['total_subjects']
+            print(f"Total subjects: {total_subjects}")
+            
+            # Get today's classes
+            today = datetime.now().strftime('%Y-%m-%d')
+            print(f"Getting today's classes for {today}...")
+            cursor.execute('''
+                SELECT sm.subject, sm.department, sm.semester, sm.section,
+                    CASE 
+                        WHEN EXISTS (
+                            SELECT 1 FROM attendance a
+                            WHERE a.Subject = sm.subject 
+                            AND a.Department = sm.department
+                            AND a.Semester = sm.semester
+                            AND a.Section = sm.section
+                            AND a.Date = ?
+                        ) THEN 'Completed'
+                        ELSE 'Pending'
+                    END as status
+                FROM section_mapping sm
+                WHERE sm.faculty_id = ?
+                AND sm.academic_year = (
+                    SELECT MAX(academic_year) FROM section_mapping
+                )
+            ''', (today, faculty_id))
+            todays_classes = [dict(row) for row in cursor.fetchall()]
+            print(f"Today's classes: {todays_classes}")
+            
+            # Get attendance marked stats (default to 0 if no records)
+            print("Getting attendance stats...")
+            cursor.execute('''
+                SELECT 
+                    COUNT(DISTINCT a.Date || a.Subject || a.Department || a.Semester || a.Section) as total,
+                    COUNT(DISTINCT CASE WHEN a.Date = ? THEN a.Date || a.Subject || a.Department || a.Semester || a.Section END) as today
+                FROM attendance a
+                JOIN section_mapping sm ON 
+                    a.Subject = sm.subject 
+                    AND a.Department = sm.department
+                    AND a.Semester = sm.semester
+                    AND a.Section = sm.section
+                WHERE sm.faculty_id = ?
+                AND strftime('%Y-%m', a.Date) = strftime('%Y-%m', 'now')
+            ''', (today, faculty_id))
+            result = cursor.fetchone()
+            attendance_marked = {'total': result['total'], 'today': result['today']} if result else {'total': 0, 'today': 0}
+            print(f"Attendance stats: {attendance_marked}")
+            
+            # Get subject-wise attendance percentage (default to empty list if no records)
+            print("Getting subject-wise attendance...")
+            cursor.execute('''
+                WITH SubjectAttendance AS (
+                    SELECT 
+                        a.Subject,
+                        COUNT(CASE WHEN a.Present = 1 THEN 1 END) * 100.0 / COUNT(*) as attendance_percentage
+                    FROM attendance a
+                    JOIN section_mapping sm ON 
+                        a.Subject = sm.subject 
+                        AND a.Department = sm.department
+                        AND a.Semester = sm.semester
+                        AND a.Section = sm.section
+                    WHERE sm.faculty_id = ?
+                    GROUP BY a.Subject
+                )
+                SELECT Subject as subject, ROUND(attendance_percentage, 1) as attendance
+                FROM SubjectAttendance
+            ''', (faculty_id,))
+            subject_attendance = [dict(row) for row in cursor.fetchall()]
+            print(f"Subject attendance: {subject_attendance}")
+            
+            # Get recent classes with attendance stats (default to empty list if no records)
+            print("Getting recent classes...")
+            cursor.execute('''
+                WITH RecentClasses AS (
+                    SELECT 
+                        a.Subject || ' - ' || a.Department || a.Semester || a.Section as name,
+                        a.Date,
+                        COUNT(CASE WHEN a.Present = 1 THEN 1 END) as present,
+                        COUNT(CASE WHEN a.Present = 0 THEN 1 END) as absent
+                    FROM attendance a
+                    JOIN section_mapping sm ON 
+                        a.Subject = sm.subject 
+                        AND a.Department = sm.department
+                        AND a.Semester = sm.semester
+                        AND a.Section = sm.section
+                    WHERE sm.faculty_id = ?
+                    GROUP BY a.Subject, a.Department, a.Semester, a.Section, a.Date
+                    ORDER BY a.Date DESC
+                    LIMIT 5
+                )
+                SELECT name, present, absent
+                FROM RecentClasses
+            ''', (faculty_id,))
+            recent_classes = [dict(row) for row in cursor.fetchall()]
+            print(f"Recent classes: {recent_classes}")
+            
+            response_data = {
+                'faculty_name': faculty['name'],
+                'department': faculty['department'],
+                'total_subjects': total_subjects,
+                'todays_classes': todays_classes,
+                'attendance_marked': attendance_marked,
+                'subject_attendance': subject_attendance,
+                'recent_classes': recent_classes
+            }
+            print(f"Sending response: {response_data}")
+            return jsonify(response_data)
+            
+    except Exception as e:
+        print(f"Error in get_faculty_dashboard_stats: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to fetch dashboard data'}), 500
 
 # Initialize database when the app starts
 init_db()
