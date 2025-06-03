@@ -131,7 +131,7 @@ const LoginForm = () => {
       <Card className="max-w-md w-full bg-background/80 backdrop-blur-sm z-10 p-6">
         <div className="text-center mb-8 animate-fade-in space-y-4">
           <div className="mx-auto max-w-[90%]">
-            <h1 className="text-xl font-bold tracking-tight whites">
+            <h1 className="text-xl font-bold tracking-tight ">
               Proudhadevaraya Institute of Technology-Hospet
             </h1>
           </div>

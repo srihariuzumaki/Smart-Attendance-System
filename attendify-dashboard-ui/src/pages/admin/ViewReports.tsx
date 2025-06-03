@@ -9,161 +9,195 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, Download, FileDown, Filter, FileSpreadsheet } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useToast } from "@/components/ui/use-toast";
+import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
 interface Subject {
   code: string;
   name: string;
   semester: string;
-  scheme: string;
-  branch: string;
+  department: string;
+  section: string;
 }
 
 const ViewReports = () => {
   const [reportType, setReportType] = useState("format1");
+  const [faculty, setFaculty] = useState("");
+  const [facultyList, setFacultyList] = useState<any[]>([]);
   const [department, setDepartment] = useState("");
   const [academicYear, setAcademicYear] = useState("");
   const [semester, setSemester] = useState("");
   const [subject, setSubject] = useState("");
-  const [group, setGroup] = useState<string>("cse_physics");
-  const [scheme, setScheme] = useState<string>("2022");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
+  const [loading, setLoading] = useState(false);
+  const [attendanceData, setAttendanceData] = useState<any[]>([]);
+  const [dates, setDates] = useState<string[]>([]);
+  const { toast } = useToast();
 
+  // Fetch faculty list when component mounts
   useEffect(() => {
-    if (department && semester) {
-      // Fetch subjects for the selected department, semester, and scheme
-      const url = ['1', '2'].includes(semester)
-        ? `http://localhost:5000/api/subjects/${department}?semester=${semester}&group=${group}&scheme=${scheme}`
-        : `http://localhost:5000/api/subjects/${department}?semester=${semester}&scheme=${scheme}`;
+    const fetchFaculty = async () => {
+      try {
+        const response = await fetch("http://localhost:5000/api/faculty");
+        if (!response.ok) {
+          throw new Error('Failed to fetch faculty list');
+        }
+        const data = await response.json();
+        setFacultyList(data.faculty || []);
+      } catch (error) {
+        console.error('Error fetching faculty:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch faculty list",
+          variant: "destructive",
+        });
+      }
+    };
 
-      fetch(url)
-        .then(res => res.json())
-        .then(data => {
-          setSubjects(data || []);
-        })
-        .catch(error => {
+    fetchFaculty();
+  }, []);
+
+  // Fetch subjects when faculty is selected
+  useEffect(() => {
+    if (faculty) {
+      const fetchSubjects = async () => {
+        try {
+          const response = await fetch(`http://localhost:5000/api/faculty/${faculty}/subjects`);
+          if (!response.ok) {
+            throw new Error('Failed to fetch subjects');
+          }
+          const data = await response.json();
+          setSubjects(data.subjects || []);
+
+          // If faculty changes, reset subject selection
+          setSubject("");
+
+          // Set department from the selected faculty's department
+          const selectedFaculty = facultyList.find(f => f.faculty_id === faculty);
+          if (selectedFaculty) {
+            setDepartment(selectedFaculty.department);
+          }
+        } catch (error) {
           console.error('Error fetching subjects:', error);
           setSubjects([]);
-        });
+        }
+      };
+
+      fetchSubjects();
     } else {
       setSubjects([]);
+      setSubject("");
+      setDepartment("");
     }
-  }, [department, semester, group, scheme]);
+  }, [faculty, facultyList]);
 
-  const handleGenerateReport = () => {
-    // In a real app, this would generate a report based on the selected filters
-    console.log("Generate report with filters:", {
-      reportType,
-      department,
-      academicYear,
-      semester,
-      subject,
-      fromDate,
-      toDate
-    });
+  const handleGenerateReport = async () => {
+    if (!faculty || !subject || !fromDate || !toDate) {
+      toast({
+        title: "Error",
+        description: "Please fill in all the required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const selectedSubject = subjects.find(s => s.code === subject);
+      if (!selectedSubject) {
+        throw new Error('Selected subject not found');
+      }
+
+      const response = await fetch(
+        `http://localhost:5000/api/admin/attendance-report?` +
+        new URLSearchParams({
+          department: selectedSubject.department,
+          academicYear: academicYear || "2023-2024", // Default academic year
+          semester: selectedSubject.semester,
+          subject: subject,
+          fromDate: format(fromDate, 'yyyy-MM-dd'),
+          toDate: format(toDate, 'yyyy-MM-dd')
+        })
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch attendance report');
+      }
+
+      const data = await response.json();
+
+      if (reportType === 'format1') {
+        // Process data for format1 (summary view)
+        const processedData = data.students.map((student: any) => ({
+          ...student,
+          attendance_percentage: ((student.classes_attended / student.total_classes) * 100).toFixed(1)
+        }));
+        setAttendanceData(processedData);
+        setDates([]);
+      } else {
+        // Process data for format2 (date-wise view)
+        setAttendanceData(data.students);
+        setDates(data.dates || []);
+      }
+    } catch (error) {
+      console.error('Error fetching report:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate report",
+        variant: "destructive",
+      });
+      setAttendanceData([]);
+      setDates([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">View Reports</h1>
-        <p className="text-muted-foreground">Generate and download attendance reports</p>
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">View Reports</h1>
+          <p className="text-muted-foreground">
+            Generate and view attendance reports
+          </p>
+        </div>
       </div>
 
-      <Card className="shadow-md">
+      <Card>
         <CardHeader>
           <CardTitle>Report Filters</CardTitle>
-          <CardDescription>Select filters to generate attendance reports</CardDescription>
+          <CardDescription>
+            Select the filters to generate the attendance report
+          </CardDescription>
         </CardHeader>
-
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid gap-6">
+            <Tabs defaultValue="format1" value={reportType} onValueChange={setReportType}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="format1">Summary View</TabsTrigger>
+                <TabsTrigger value="format2">Date-wise View</TabsTrigger>
+              </TabsList>
+            </Tabs>
+
             <div className="space-y-2">
-              <Label htmlFor="scheme">Scheme</Label>
-              <Select value={scheme} onValueChange={(value) => {
-                setScheme(value);
-                setSubject(""); // Reset selected subject when scheme changes
-              }}>
-                <SelectTrigger id="scheme">
-                  <SelectValue placeholder="Select Scheme" />
+              <Label htmlFor="faculty">Faculty</Label>
+              <Select value={faculty} onValueChange={setFaculty}>
+                <SelectTrigger id="faculty">
+                  <SelectValue placeholder="Select Faculty" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2022">2022 Scheme</SelectItem>
-                  <SelectItem value="2021">2021 Scheme</SelectItem>
+                  {facultyList.map((f) => (
+                    <SelectItem key={f.faculty_id} value={f.faculty_id}>
+                      {f.name} - {f.department}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Select value={department} onValueChange={setDepartment}>
-                <SelectTrigger id="department">
-                  <SelectValue placeholder="Select Department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cse">Computer Science & Engineering</SelectItem>
-                  <SelectItem value="ece">Electronics & Communication</SelectItem>
-                  <SelectItem value="it">Information Technology</SelectItem>
-                  <SelectItem value="mech">Mechanical Engineering</SelectItem>
-                  <SelectItem value="civil">Civil Engineering</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="academic-year">Academic Year</Label>
-              <Select value={academicYear} onValueChange={setAcademicYear}>
-                <SelectTrigger id="academic-year">
-                  <SelectValue placeholder="Select Academic Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="2023-2024">2023-2024</SelectItem>
-                  <SelectItem value="2024-2025">2024-2025</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="semester">Semester</Label>
-              <Select value={semester} onValueChange={(value) => {
-                setSemester(value);
-                // Reset group if semester is not 1 or 2
-                if (!['1', '2'].includes(value)) {
-                  setGroup('cse_physics');
-                }
-                setSubject(""); // Reset selected subject when semester changes
-              }}>
-                <SelectTrigger id="semester">
-                  <SelectValue placeholder="Select Semester" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1st Semester</SelectItem>
-                  <SelectItem value="2">2nd Semester</SelectItem>
-                  <SelectItem value="3">3rd Semester</SelectItem>
-                  <SelectItem value="4">4th Semester</SelectItem>
-                  <SelectItem value="5">5th Semester</SelectItem>
-                  <SelectItem value="6">6th Semester</SelectItem>
-                  <SelectItem value="7">7th Semester</SelectItem>
-                  <SelectItem value="8">8th Semester</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {['1', '2'].includes(semester) && (
-              <div className="space-y-2">
-                <Label htmlFor="group">Group</Label>
-                <Select value={group} onValueChange={setGroup}>
-                  <SelectTrigger id="group">
-                    <SelectValue placeholder="Select Group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cse_physics">CSE Physics Group</SelectItem>
-                    <SelectItem value="cse_chemistry">CSE Chemistry Group</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="subject">Subject</Label>
@@ -172,233 +206,160 @@ const ViewReports = () => {
                   <SelectValue placeholder="Select Subject" />
                 </SelectTrigger>
                 <SelectContent>
-                  {subjects.map((subj) => (
-                    <SelectItem key={subj.code} value={subj.code}>
-                      {subj.name} ({subj.code})
+                  {subjects.map((sub) => (
+                    <SelectItem key={sub.code} value={sub.code}>
+                      {sub.name} - {sub.section}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="from-date">From Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left"
-                    id="from-date"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {fromDate ? format(fromDate, "PPP") : "Select date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={fromDate}
-                    onSelect={setFromDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>From Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !fromDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {fromDate ? format(fromDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={fromDate}
+                      onSelect={setFromDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>To Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !toDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {toDate ? format(toDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={toDate}
+                      onSelect={setToDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="to-date">To Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left"
-                    id="to-date"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {toDate ? format(toDate, "PPP") : "Select date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={toDate}
-                    onSelect={setToDate}
-                    initialFocus
-                    disabled={(date) => fromDate ? date < fromDate : false}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          <div className="mt-4 flex justify-center">
-            <Button onClick={handleGenerateReport} className="gap-2">
-              <Filter className="h-4 w-4" />
-              Apply Filters
+            <Button onClick={handleGenerateReport} disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating Report...
+                </>
+              ) : (
+                'Generate Report'
+              )}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="shadow-md">
-        <CardHeader>
-          <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-            <div>
-              <CardTitle>Attendance Reports</CardTitle>
-              <CardDescription>View and download attendance reports</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" className="gap-2">
-                <FileDown className="h-4 w-4" />
-                Export CSV
-              </Button>
-              <Button variant="outline" className="gap-2">
-                <FileSpreadsheet className="h-4 w-4" />
-                Export PDF
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
+      {attendanceData.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <Tabs defaultValue="format1" value={reportType}>
+              <TabsContent value="format1">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>USN</TableHead>
+                      <TableHead>Student Name</TableHead>
+                      <TableHead>Total Classes</TableHead>
+                      <TableHead>Attended</TableHead>
+                      <TableHead>Attendance %</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {attendanceData.map((student) => (
+                      <TableRow key={student.usn}>
+                        <TableCell>{student.usn}</TableCell>
+                        <TableCell>{student.name}</TableCell>
+                        <TableCell>{student.totalClasses}</TableCell>
+                        <TableCell>{student.classesAttended}</TableCell>
+                        <TableCell className={cn(
+                          "font-medium",
+                          student.attendancePercentage >= 75 ? "text-green-600" :
+                            student.attendancePercentage >= 60 ? "text-yellow-600" :
+                              "text-red-600"
+                        )}>
+                          {student.attendancePercentage.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TabsContent>
 
-        <CardContent>
-          <Tabs defaultValue="format1" onValueChange={setReportType} className="w-full">
-            <TabsList className="grid grid-cols-2 mb-6">
-              <TabsTrigger value="format1">Report Format 1</TabsTrigger>
-              <TabsTrigger value="format2">Report Format 2</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="format1">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>USN</TableHead>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead>Total Classes</TableHead>
-                    <TableHead>Attended</TableHead>
-                    <TableHead>Attendance %</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>1CS20001</TableCell>
-                    <TableCell>Abhishek Sharma</TableCell>
-                    <TableCell>42</TableCell>
-                    <TableCell>38</TableCell>
-                    <TableCell className="font-medium">90.5%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20002</TableCell>
-                    <TableCell>Priya Patel</TableCell>
-                    <TableCell>42</TableCell>
-                    <TableCell>35</TableCell>
-                    <TableCell className="font-medium">83.3%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20003</TableCell>
-                    <TableCell>Rahul Singh</TableCell>
-                    <TableCell>42</TableCell>
-                    <TableCell>30</TableCell>
-                    <TableCell className="font-medium">71.4%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20004</TableCell>
-                    <TableCell>Neha Gupta</TableCell>
-                    <TableCell>42</TableCell>
-                    <TableCell>40</TableCell>
-                    <TableCell className="font-medium">95.2%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20005</TableCell>
-                    <TableCell>Arjun Kumar</TableCell>
-                    <TableCell>42</TableCell>
-                    <TableCell>32</TableCell>
-                    <TableCell className="font-medium">76.2%</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </TabsContent>
-
-            <TabsContent value="format2">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>USN</TableHead>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead className="text-center">Jan 15</TableHead>
-                    <TableHead className="text-center">Jan 17</TableHead>
-                    <TableHead className="text-center">Jan 19</TableHead>
-                    <TableHead className="text-center">Jan 22</TableHead>
-                    <TableHead className="text-center">Jan 24</TableHead>
-                    <TableHead>Total %</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>1CS20001</TableCell>
-                    <TableCell>Abhishek Sharma</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-red-500">A</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="font-medium">80%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20002</TableCell>
-                    <TableCell>Priya Patel</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-red-500">A</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="font-medium">80%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20003</TableCell>
-                    <TableCell>Rahul Singh</TableCell>
-                    <TableCell className="text-center text-red-500">A</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-red-500">A</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="font-medium">60%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20004</TableCell>
-                    <TableCell>Neha Gupta</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="font-medium">100%</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>1CS20005</TableCell>
-                    <TableCell>Arjun Kumar</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-red-500">A</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="text-center text-red-500">A</TableCell>
-                    <TableCell className="text-center text-green-500">P</TableCell>
-                    <TableCell className="font-medium">60%</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-
-        <CardFooter className="flex justify-center border-t pt-4">
-          <div className="flex gap-2">
-            <Button variant="outline">Previous</Button>
-            <Button variant="outline">1</Button>
-            <Button variant="outline">2</Button>
-            <Button variant="outline">3</Button>
-            <Button variant="outline">Next</Button>
-          </div>
-        </CardFooter>
-      </Card>
+              <TabsContent value="format2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>USN</TableHead>
+                      <TableHead>Student Name</TableHead>
+                      {dates.map((date) => (
+                        <TableHead key={`header-${date}`} className="text-center">
+                          {format(new Date(date), 'MMM dd')}
+                        </TableHead>
+                      ))}
+                      <TableHead>Total %</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {attendanceData.map((student) => (
+                      <TableRow key={student.usn}>
+                        <TableCell>{student.usn}</TableCell>
+                        <TableCell>{student.name}</TableCell>
+                        {dates.map((date) => (
+                          <TableCell key={`${student.usn}-${date}`} className="text-center">
+                            {student.attendance[date] ? 'P' : 'A'}
+                          </TableCell>
+                        ))}
+                        <TableCell className={cn(
+                          "font-medium",
+                          student.attendancePercentage >= 75 ? "text-green-600" :
+                            student.attendancePercentage >= 60 ? "text-yellow-600" :
+                              "text-red-600"
+                        )}>
+                          {student.attendancePercentage.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

@@ -8,18 +8,13 @@ import sqlite3
 from contextlib import contextmanager
 import hashlib
 import re
-import xlsxwriter  # Add this import
+import xlsxwriter  
 from subject_codes import parse_subject_codes, get_subjects_for_semester
 
 app = Flask(__name__)
-CORS(app, resources={
-    r"/*": {
-        "origins": ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000"],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
-    }
-})
+
+# Enable CORS for all routes
+CORS(app)
 
 # Define subjects for each department
 DEPARTMENT_SUBJECTS = {
@@ -1361,6 +1356,132 @@ def get_attendance_report(faculty_id):
             
     except Exception as e:
         print(f"Error in get_attendance_report: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/attendance-report', methods=['GET'])
+def get_admin_attendance_report():
+    try:
+        department = request.args.get('department')
+        academic_year = request.args.get('academicYear')
+        semester = request.args.get('semester')
+        subject = request.args.get('subject')
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+
+        print(f"\nDebug - Received parameters:")
+        print(f"Department: {department}")
+        print(f"Academic Year: {academic_year}")
+        print(f"Semester: {semester}")
+        print(f"Subject: {subject}")
+        print(f"From Date: {from_date}")
+        print(f"To Date: {to_date}")
+
+        if not all([department, academic_year, semester, subject, from_date, to_date]):
+            print("Missing required parameters")
+            return jsonify({'error': 'Missing required parameters'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # Get all students in the department and semester
+            print("\nFetching students...")
+            cursor.execute('''
+                SELECT USN, Name
+                FROM students
+                WHERE department = ? AND semester = ?
+                ORDER BY USN
+            ''', (department, semester))
+            
+            students = [dict(row) for row in cursor.fetchall()]
+            print(f"Found {len(students)} students")
+
+            if not students:
+                print("No students found for the given department and semester")
+                return jsonify({
+                    'students': [],
+                    'dates': [],
+                    'message': 'No students found for the given criteria'
+                })
+
+            # Get all dates between from_date and to_date where attendance was marked
+            print("\nFetching attendance dates...")
+            cursor.execute('''
+                SELECT DISTINCT Date
+                FROM attendance
+                WHERE subject_code = ?
+                AND Date BETWEEN ? AND ?
+                ORDER BY Date
+            ''', (subject, from_date, to_date))
+            
+            dates = [row['Date'] for row in cursor.fetchall()]
+            print(f"Found {len(dates)} attendance dates")
+
+            if not dates:
+                print("No attendance records found for the given date range")
+                return jsonify({
+                    'students': students,
+                    'dates': [],
+                    'message': 'No attendance records found for the selected date range'
+                })
+
+            # For each student, get their attendance records
+            print("\nProcessing attendance records for each student...")
+            processed_students = []
+            for student in students:
+                # Get total classes and attended classes
+                cursor.execute('''
+                    SELECT 
+                        COUNT(DISTINCT Date) as total_classes,
+                        COUNT(CASE WHEN Present = 1 THEN 1 END) as classes_attended
+                    FROM attendance
+                    WHERE USN = ?
+                    AND subject_code = ?
+                    AND Date BETWEEN ? AND ?
+                ''', (student['USN'], subject, from_date, to_date))
+                
+                attendance_stats = dict(cursor.fetchone())
+
+                # Get date-wise attendance
+                cursor.execute('''
+                    SELECT Date, Present
+                    FROM attendance
+                    WHERE USN = ?
+                    AND subject_code = ?
+                    AND Date BETWEEN ? AND ?
+                ''', (student['USN'], subject, from_date, to_date))
+                
+                attendance_records = cursor.fetchall()
+                
+                # Calculate attendance percentage
+                total = attendance_stats['total_classes'] or 0
+                attended = attendance_stats['classes_attended'] or 0
+                
+                # Create processed student record with camelCase keys
+                processed_student = {
+                    'usn': student['USN'],
+                    'name': student['Name'],
+                    'totalClasses': total,
+                    'classesAttended': attended,
+                    'attendancePercentage': round((attended / total * 100), 2) if total > 0 else 0,
+                    'attendance': {
+                        record['Date']: bool(record['Present'])
+                        for record in attendance_records
+                    }
+                }
+                processed_students.append(processed_student)
+
+            print("\nSending response:")
+            print(f"Total students: {len(processed_students)}")
+            print(f"Total dates: {len(dates)}")
+            return jsonify({
+                'students': processed_students,
+                'dates': dates
+            })
+
+    except Exception as e:
+        print(f"\nError in get_admin_attendance_report: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/attendance/report/download', methods=['POST', 'OPTIONS'])
